@@ -6,16 +6,16 @@ from PyQt5.Qt import *
 from PyQt5.QtGui import *
 from PyQt5 import QtGui
 from PyQt5.QtCore import *
+from PyQt5.QtCore import QTimer, Qt
+
 import sys
-from math import pi
-import sympy as sp
-import math as m
-import serial
-import time
 import numpy as np
+
+import cv2
 
 from controlCamera import ControlCamera 
 from controlCamera import StatusCamera
+from getFrame import GetFrame
 
 # --------------------------------
 # Creamos la Clase de la Interfaz
@@ -37,8 +37,8 @@ class Window(QMainWindow):
         # self.setWindowIcon(QtGui.QIcon("ScriptScanner/icono_intefaz.png"))
 
         self.controlCamera = ControlCamera()
-
-        self.statusCamera = False
+        
+        self.getFrame = GetFrame()
 
         # --------------------------------
         # Se agregan todos los widgets
@@ -49,6 +49,7 @@ class Window(QMainWindow):
         # self.setLabels()
         # self.setInputs()
         # self.setComboBox()
+        self.setVideo()
         # self.applyStyles()
 
     def setGrid(self):
@@ -61,14 +62,6 @@ class Window(QMainWindow):
         self.MainWidget.setLayout(self.Grid_layout)
 
     def setBoxes(self):
-        # --------------------------------
-        # Cuadro de ingresos de coordenadas espaciales
-
-        self.lyt_inputs = QGridLayout()
-        self.lyt_inputs.setSpacing(2)
-
-        # self.gb_Inputs = QGroupBox("Final effector position", parent=self)
-        # self.gb_Inputs.setLayout(self.lyt_inputs)
 
         # --------------------------------
         # Cuadro de botones de control
@@ -79,51 +72,20 @@ class Window(QMainWindow):
         self.gb_Commands = QGroupBox("Control panel", parent=self)
         self.gb_Commands.setLayout(self.lyt_Commands)
 
-        # # --------------------------------
-        # # Cuadro de labels de variables articulares
 
-        # self.lyt_JPositions = QGridLayout()
-        # self.lyt_JPositions.setSpacing(2)
+        # Cuadro de frames video
 
-        # self.gb_JPositions = QGroupBox("Joint Positions", parent=self)
-        # self.gb_JPositions.setLayout(self.lyt_JPositions)
+        self.videoLayout = QHBoxLayout()
+        self.videoLayout.setSpacing(2)
 
-        # # --------------------------------
-        # # Cuadro de trayectorias
-
-        # self.lyt_TypeMove = QGridLayout()
-        # self.lyt_TypeMove.setSpacing(2)
-
-        # self.gb_Movement = QGroupBox("Movement", parent=self)
-        # self.gb_Movement.setLayout(self.lyt_TypeMove)
-
-        # # Cuadro de configuracion de velocidades
-
-        # self.lyt_speed = QGridLayout()
-        # self.lyt_speed.setSpacing(2)
-
-        # # self.gb_speed = QGroupBox("Config", parent=self)
-        # # self.gb_speed.setLayout(self.lyt_speed)
-
-        # # Cuadro de configuracion de articulaciones
-
-        # self.lyt_art_value = QGridLayout()
-        # self.lyt_art_value.setSpacing(2)
-
-        # self.gb_artValue = QGroupBox("Set Joint Positions", parent=self)
-        # self.gb_artValue.setLayout(self.lyt_art_value)
+        self.gb_video = QGroupBox("View Camera", parent=self)
+        self.gb_video.setLayout(self.videoLayout)
 
         # # --------------------------------
         # # Agregamos los boxes a los layouts correspondientes
 
-        # self.Grid_layout.addWidget(self.gb_JPositions, 0, 0, 1, 5)
-        self.Grid_layout.addWidget(self.gb_Commands, 0, 5, 1, 1)
-
-        # # self.Grid_layout.addWidget(self.gb_Inputs, 1, 0, 1, 5)
-        # # self.Grid_layout.addWidget(self.gb_speed, 1, 5, 1, 1)
-
-        # self.Grid_layout.addWidget(self.gb_Movement, 2, 0, 1, 6)
-        # self.Grid_layout.addWidget(self.gb_artValue, 3, 0, 1, 6)
+        self.Grid_layout.addWidget(self.gb_video, 0, 0, 1, 1)
+        self.Grid_layout.addWidget(self.gb_Commands, 1, 0, 1, 1)
 
     def setButtons(self):
         # --------------------------------
@@ -141,8 +103,6 @@ class Window(QMainWindow):
         self.btnTakeSnapshot.setEnabled(False)
         # self.btnTakeSnapshot.clicked.connect(self.EMER_STOP)
         self.lyt_Commands.addWidget(self.btnTakeSnapshot, 2, 0, 1, 1)
-
-
 
     def setLabels(self):
         # --------------------------------
@@ -432,11 +392,53 @@ class Window(QMainWindow):
         self.combo_box_def_position.setEnabled(False)
         self.lyt_inputs.addWidget(self.combo_box_def_position, 1, 3, 1, 1)
 
+    def setVideo(self):
+
+        self.video_labelL = QLabel()             # Etiqueta para mostrar el video
+        self.video_labelR = QLabel()
+
+        self.videoLayout.addWidget(self.video_labelL)
+        self.videoLayout.addWidget(self.video_labelR)
+        self.setLayout(self.videoLayout)
+        
+        # Iniciar la captura de video
+        # self.video_capture = cv2.VideoCapture(0)  # 0 para la cámara predeterminada
+        self.video_capture = self.getFrame.connectToCamera(0)
+        
+        # Iniciar el temporizador para actualizar el video
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_frame)
+        self.timer.start(30)  # Actualizar cada 30 milisegundos
+
+
+    def update_frame(self):
+        frameL,frameR = self.getFrame.getNewFrame(self.video_capture)
+
+        frame = cv2.cvtColor(frameL, cv2.COLOR_BGR2RGB)      # Convertir el fotograma a RGB
+        self.video_labelL.setPixmap(self.convertFrameToQt(frame))                  # Mostrar el fotograma en el QLabel
+
+        frame = cv2.cvtColor(frameR, cv2.COLOR_BGR2RGB)      # Convertir el fotograma a RGB
+        self.video_labelR.setPixmap(self.convertFrameToQt(frame))                  # Mostrar el fotograma en el QLabel
+
+
+    def convertFrameToQt(self,frame):
+        h, w, ch = frame.shape
+        bytes_per_line = ch * w
+        convert_to_qt_format = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(convert_to_qt_format)
+        pixmap = pixmap.scaled(300, 240, Qt.KeepAspectRatio)
+
+        return pixmap
+
+
+
+    def closeEvent(self, event):
+        self.video_capture.release()  # Liberar la captura de la cámara al cerrar la aplicación
+
     def onClose(self, QCloseEvent):
         super().closeEvent(QCloseEvent)
         self.ser.close()
 
-    
 
     def applyStyles(self):
         # --------------------------------
@@ -631,9 +633,6 @@ class Window(QMainWindow):
         else:
             print("Camera already connect")
         
-    
-
-
 
 # --------------------------------
 # Se ejecuta la interfaz

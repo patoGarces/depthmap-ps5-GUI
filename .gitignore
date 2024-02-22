@@ -2,3 +2,7 @@
 left.avi
 right.avi
 *.avi
+__pycache__
+left.avi
+__pycache__
+left.avi

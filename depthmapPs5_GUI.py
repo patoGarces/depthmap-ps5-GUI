@@ -10,8 +10,11 @@ from PyQt5.QtCore import QTimer, Qt
 
 import sys
 import numpy as np
-
+import logging
+import time
 import cv2
+
+from Utils.utils import CameraStatusUi
 
 from controlCamera import ControlCamera 
 from controlCamera import StatusCamera
@@ -22,6 +25,9 @@ from getFrame import GetFrame
 
 
 class Window(QMainWindow):
+
+    statusCameraUi = 0
+
     def __init__(self):
         # --------------------------------
         # Esta línea es importante para que funcione el programa
@@ -31,10 +37,9 @@ class Window(QMainWindow):
         # --------------------------------
         # Propiedades de la ventana
 
-        self.setFixedHeight(650)
-        self.setFixedWidth(800)
+        # self.setFixedHeight(650)
+        # self.setFixedWidth(800)
         self.setWindowTitle("Ps5 Camera GUI")
-        # self.setWindowIcon(QtGui.QIcon("ScriptScanner/icono_intefaz.png"))
 
         self.controlCamera = ControlCamera()
         
@@ -44,13 +49,12 @@ class Window(QMainWindow):
         # Se agregan todos los widgets
 
         self.setGrid()
-        self.setBoxes()
-        self.setButtons()
-        # self.setLabels()
-        # self.setInputs()
-        # self.setComboBox()
-        self.setVideo()
+
+        self.setVideoControlPanel()
+        self.setVideoCameraPanel()
         # self.applyStyles()
+
+        self.updateCameraStatus()
 
     def setGrid(self):
         # --------------------------------
@@ -60,49 +64,6 @@ class Window(QMainWindow):
         self.Grid_layout = QGridLayout()
         self.Grid_layout.setSpacing(2)
         self.MainWidget.setLayout(self.Grid_layout)
-
-    def setBoxes(self):
-
-        # --------------------------------
-        # Cuadro de botones de control
-
-        self.lyt_Commands = QGridLayout()
-        self.lyt_Commands.setSpacing(2)
-
-        self.gb_Commands = QGroupBox("Control panel", parent=self)
-        self.gb_Commands.setLayout(self.lyt_Commands)
-
-
-        # Cuadro de frames video
-
-        self.videoLayout = QHBoxLayout()
-        self.videoLayout.setSpacing(2)
-
-        self.gb_video = QGroupBox("View Camera", parent=self)
-        self.gb_video.setLayout(self.videoLayout)
-
-        # # --------------------------------
-        # # Agregamos los boxes a los layouts correspondientes
-
-        self.Grid_layout.addWidget(self.gb_video, 0, 0, 1, 1)
-        self.Grid_layout.addWidget(self.gb_Commands, 1, 0, 1, 1)
-
-    def setButtons(self):
-        # --------------------------------
-        # Botón para conexión/desconexión con esp32
-
-        self.btnLoadFirm = QPushButton(text="Load Firmware")
-        self.btnLoadFirm.setEnabled(True)
-        self.btnLoadFirm.clicked.connect(self.loadFirmare)
-        self.lyt_Commands.addWidget(self.btnLoadFirm, 0, 0, 1, 1)
-
-        # --------------------------------
-        # Botón de parada de emergencia
-
-        self.btnTakeSnapshot = QPushButton(text="Take snapshot")
-        self.btnTakeSnapshot.setEnabled(False)
-        # self.btnTakeSnapshot.clicked.connect(self.EMER_STOP)
-        self.lyt_Commands.addWidget(self.btnTakeSnapshot, 2, 0, 1, 1)
 
     def setLabels(self):
         # --------------------------------
@@ -363,63 +324,146 @@ class Window(QMainWindow):
         self.lyt_art_value.addWidget(self.inptQ1pos, 1, 0, 1, 1)
         self.lyt_art_value.addWidget(self.inptQ2pos, 1, 1, 1, 1)
         self.lyt_art_value.addWidget(self.inptQ3pos, 1, 2, 1, 1)
+        
+    def setVideoControlPanel(self):
 
-    def setComboBox(self):
-        self.combo_box_speed = QComboBox()
-        velocidades = [
-            "Speed 10",
-            "Speed 20",
-            "Speed 30",
-            "Speed 40",
-            "Speed 50",
-            "Speed 60",
-            "Speed 70",
-            "Speed 80",
-            "Speed 90",
-            "Speed 100",
+         # Cuadro de control de imagen
+        self.videoControlLayout = QVBoxLayout()
+        self.videoControlLayout.setSpacing(10)
+        self.videoControlLayout.setAlignment(Qt.AlignTop)
+
+        self.gb_videoControl = QGroupBox("Control Image", parent=self)
+        self.gb_videoControl.setLayout(self.videoControlLayout)
+
+        self.Grid_layout.addWidget(self.gb_videoControl, 0, 1, 1, 1)
+
+
+        # Label de status
+        self.labelStatus = QLabel(parent=self.gb_videoControl)
+        self.labelStatus.setText("Desconectado")
+        # self.labelStatus.setFixedHeight(45)
+        self.labelStatus.setAlignment(Qt.AlignCenter)
+        
+        lbl_statusStyle = """
+            QLabel
+            {
+                background-color: white; 
+                font-size: 18px;
+                color: black;
+                font-family: "Consolas";
+                font-weight: bold; 
+                border: 3px groove #212121;
+                border-radius: 5px;
+                padding: 15px;
+            }
+        """
+        self.labelStatus.setStyleSheet(lbl_statusStyle)
+
+        self.videoControlLayout.addWidget(self.labelStatus)
+
+        # Boton para la carga de firmware
+        self.btnConnectCamera = QPushButton(text="Conectar camara")
+        self.btnConnectCamera.setEnabled(True)
+        self.btnConnectCamera.clicked.connect(self.initCameraBtn)
+        self.videoControlLayout.addWidget(self.btnConnectCamera)
+
+        # Combo box para seleccionar el indice de la camera a utilizar 
+        self.comboSourceCamera= QComboBox()
+        sourceCameras = [
+            "Source 0",
+            "Source 1",
+            "Source 2",
+            "Source 3",
         ]
-        self.combo_box_speed.addItems(velocidades)
-        self.combo_box_speed.currentIndexChanged.connect(self.SEND_SPEED)
-        self.combo_box_speed.setEnabled(False)
-        self.lyt_speed.addWidget(self.combo_box_speed, 0, 0, 1, 1)
 
-        self.combo_box_def_position = QComboBox()
-        position = ["Custom", "Home", "Brazo horizontal", "Brazo arriba"]
-        self.combo_box_def_position.addItems(position)
-        self.combo_box_def_position.currentIndexChanged.connect(
-            self.sendDefaultPosition
-        )
-        self.combo_box_def_position.setEnabled(False)
-        self.lyt_inputs.addWidget(self.combo_box_def_position, 1, 3, 1, 1)
+        self.comboSourceCamera.addItems(sourceCameras)
+        self.comboSourceCamera.currentIndexChanged.connect(self.changeSourceCameras)
+        # self.combo_resolution.setEnabled(False)
+        self.videoControlLayout.addWidget(self.comboSourceCamera)
+        self.comboSourceCamera.setCurrentIndex(0)
 
-    def setVideo(self):
+        # Combo box para seleccionar la resolucion de la camara
+        self.combo_resolution= QComboBox()
+        resolutions = [
+            "3448x808 8fps",
+            "3448x808 30fps",
+            "3448x808 60fps",
+            "2560x800 8fps",
+            "2560x800 30fps",
+            "2560x800 60fps",
+        ]
 
-        self.video_labelL = QLabel()             # Etiqueta para mostrar el video
-        self.video_labelR = QLabel()
+        self.combo_resolution.addItems(resolutions)
+        self.combo_resolution.currentIndexChanged.connect(self.changeResolution)
+        # self.combo_resolution.setEnabled(False)
+        self.videoControlLayout.addWidget(self.combo_resolution)
 
-        self.videoLayout.addWidget(self.video_labelL)
-        self.videoLayout.addWidget(self.video_labelR)
+        # Boton para tomar una captura
+        self.btnTakeSnapshot = QPushButton(text="Take snapshot")
+        self.btnTakeSnapshot.setEnabled(False)
+        # self.btnTakeSnapshot.clicked.connect(self.EMER_STOP)
+        self.videoControlLayout.addWidget(self.btnTakeSnapshot)
+
+    def setVideoCameraPanel(self):
+
+        # logging.warning('This is a warning message')
+
+        # Cuadro de frames video
+        self.videoLayout = QGridLayout()
+        self.videoLayout.setSpacing(2)
+
+        self.gb_video = QGroupBox("View Camera", parent=self)
+        self.gb_video.setLayout(self.videoLayout)
+
+        self.Grid_layout.addWidget(self.gb_video, 0, 0, 1, 1)
+
+        self.video_labelL = QLabel("No video")             # Etiqueta para mostrar el video
+        self.video_labelR = QLabel("No video")
+
+        self.video_labelR.setFixedWidth(426)
+        self.video_labelR.setFixedHeight(200)
+        self.video_labelL.setFixedWidth(426)
+        self.video_labelL.setFixedHeight(200)
+
+        self.video_labelDepthMap = QLabel("No video")
+
+        self.video_labelDepthMap.setFixedWidth(854)
+        self.video_labelDepthMap.setFixedHeight(400)
+
+        lbl_videoStyle = """
+            QLabel
+            {
+                background-color: gray; 
+                font-size: 20px;
+                color: white;
+                font-family: "Consolas";
+                font-weight: bold; 
+                border: 0px groove #212121;
+                border-radius: 5px;
+            }
+        """
+
+        self.video_labelL.setStyleSheet(lbl_videoStyle)
+        self.video_labelR.setStyleSheet(lbl_videoStyle)
+        self.video_labelDepthMap.setStyleSheet(lbl_videoStyle)
+
+        self.video_labelL.setAlignment(Qt.AlignCenter)
+        self.video_labelR.setAlignment(Qt.AlignCenter)
+        self.video_labelDepthMap.setAlignment(Qt.AlignCenter)
+
+        self.videoLayout.addWidget(self.video_labelL, 0, 0, 1, 1)
+        self.videoLayout.addWidget(self.video_labelR, 0, 1, 1, 1)
+        self.videoLayout.addWidget(self.video_labelDepthMap, 1, 0, 1, 2)
         self.setLayout(self.videoLayout)
-        
-        # Iniciar la captura de video
-        # self.video_capture = cv2.VideoCapture(0)  # 0 para la cámara predeterminada
-        self.video_capture = self.getFrame.connectToCamera(0)
-        
-        # Iniciar el temporizador para actualizar el video
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_frame)
-        self.timer.start(30)  # Actualizar cada 30 milisegundos
-
 
     def update_frame(self):
-        frameL,frameR = self.getFrame.getNewFrame(self.video_capture)
+        frameR,frameL = self.getFrame.getNewFrame(self.video_capture)
 
-        frame = cv2.cvtColor(frameL, cv2.COLOR_BGR2RGB)      # Convertir el fotograma a RGB
+        frame = cv2.cvtColor(frameL, cv2.COLOR_BGR2RGB)                            # Convertir el fotograma a RGB
         self.video_labelL.setPixmap(self.convertFrameToQt(frame))                  # Mostrar el fotograma en el QLabel
 
-        frame = cv2.cvtColor(frameR, cv2.COLOR_BGR2RGB)      # Convertir el fotograma a RGB
+        frame = cv2.cvtColor(frameR, cv2.COLOR_BGR2RGB)                            # Convertir el fotograma a RGB
         self.video_labelR.setPixmap(self.convertFrameToQt(frame))                  # Mostrar el fotograma en el QLabel
-
 
     def convertFrameToQt(self,frame):
         h, w, ch = frame.shape
@@ -430,15 +474,8 @@ class Window(QMainWindow):
 
         return pixmap
 
-
-
     def closeEvent(self, event):
         self.video_capture.release()  # Liberar la captura de la cámara al cerrar la aplicación
-
-    def onClose(self, QCloseEvent):
-        super().closeEvent(QCloseEvent)
-        self.ser.close()
-
 
     def applyStyles(self):
         # --------------------------------
@@ -602,13 +639,13 @@ class Window(QMainWindow):
         self.gb_Movement.setStyleSheet(gb_estilo)
         self.gb_speed.setStyleSheet(gb_estilo)"""
 
-        self.btnLoadFirm.setStyleSheet(btn_estilo)
+        self.btnConnectCamera.setStyleSheet(btn_estilo)
         self.btn_lineal_move.setStyleSheet(btn_estilo)
         self.btnTakeSnapshot.setStyleSheet(btn_estilo)
         self.btn_Move.setStyleSheet(btn_estilo)
         self.btn_MovetoArt.setStyleSheet(btn_estilo)
 
-        self.btnLoadFirm.setFixedHeight(20)
+        self.btnConnectCamera.setFixedHeight(20)
         self.btn_lineal_move.setFixedHeight(20)
         self.btnTakeSnapshot.setFixedHeight(20)
         self.btn_Move.setFixedHeight(20)
@@ -617,22 +654,72 @@ class Window(QMainWindow):
 
         self.setStyleSheet("background-color:#F4F6F6;")
 
-
-    def loadFirmare(self):
-        # print("Iniciando carga de firmware")
-
-        self.statusCamera = self.controlCamera.getCameraStatus()
-        if( self.statusCamera == StatusCamera.CAMERA_NOT_CONNECTED ):
-            print("Camera not found")
-        elif( self.statusCamera == StatusCamera.CAMERA_CONNECTED_PENDING_FW ):
-            print("Trying load firmware")
-            if( self.controlCamera.loadFirmwareCamera() == True ):
-                print("Camera connected!")
-            else:
-                print("Error trying connect")
+    def startVideoStream(self):
+        print("start vvideo stream")
+        try:
+            self.video_capture = self.getFrame.connectToCamera(self.comboSourceCamera.currentIndex())
+            # Iniciar el temporizador para actualizar el video
+            self.timer = QTimer(self)
+            self.timer.timeout.connect(self.update_frame)
+            self.timer.start(30)  # Actualizar cada 30 milisegundos
+        except:
+            return False
         else:
-            print("Camera already connect")
-        
+            return True
+
+    def stopVideoStream(self):
+        self.timer.stop()
+
+    def changeResolution(self,index):                               # TODO: implementar
+        print("Change resolution index: "+str(index))
+
+    def changeSourceCameras(self,index):
+        print("Change source camera index: "+str(index))
+        self.stopVideoStream()
+        self.startVideoStream()
+
+    def setStatusCameraUi(self,status: CameraStatusUi):
+        self.statusCameraUi = status
+        self.labelStatus.setText(status.value)
+
+        if (status == CameraStatusUi.WAITING_FW):
+            self.btnConnectCamera.setText("Cargar FW")
+        elif (status == CameraStatusUi.CONNECTED):
+            self.btnConnectCamera.setText("Iniciar video")
+        elif (status == CameraStatusUi.NOT_FOUND):
+            self.btnConnectCamera.setText("Buscar camara")
+        elif (status == CameraStatusUi.STREAM_RUNNING):
+            self.btnConnectCamera.setText("Parar stream")
+    
+    def updateCameraStatus(self):
+        statusCameraHardware = self.controlCamera.getCameraStatus()
+        if( statusCameraHardware == StatusCamera.CAMERA_NOT_CONNECTED ):
+            self.setStatusCameraUi(CameraStatusUi.NOT_FOUND)
+        elif( statusCameraHardware == StatusCamera.CAMERA_CONNECTED_PENDING_FW ):
+            self.setStatusCameraUi(CameraStatusUi.WAITING_FW)
+        else:
+            self.setStatusCameraUi( CameraStatusUi.CONNECTED)
+    
+    def initCameraBtn(self):
+        if (self.statusCameraUi == CameraStatusUi.WAITING_FW):
+            self.loadFirmware()
+        elif (self.statusCameraUi == CameraStatusUi.CONNECTED):
+            self.setStatusCameraUi(CameraStatusUi.STREAM_INIT)
+            if (self.startVideoStream()):
+                self.setStatusCameraUi(CameraStatusUi.STREAM_RUNNING)
+            else:
+                self.setStatusCameraUi(CameraStatusUi.ERROR)
+        elif (self.statusCameraUi == CameraStatusUi.NOT_FOUND):
+            self.updateCameraStatus()
+        elif (self.statusCameraUi == CameraStatusUi.STREAM_RUNNING):
+            self.setStatusCameraUi(CameraStatusUi.CONNECTED)                    # vuelvo al estado de connected
+            self.stopVideoStream()
+
+    def loadFirmware(self):
+        if( self.controlCamera.loadFirmwareCamera() == True ):
+            self.setStatusCameraUi(CameraStatusUi.CONNECTED)
+        else:
+            self.setStatusCameraUi( CameraStatusUi.ERROR)
 
 # --------------------------------
 # Se ejecuta la interfaz

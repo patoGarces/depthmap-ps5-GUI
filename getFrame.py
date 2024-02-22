@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 
+import logging
+
 class GetFrame:
 
     out_full = cv2.VideoWriter('full.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(3448,808))
@@ -9,7 +11,13 @@ class GetFrame:
     out_right = cv2.VideoWriter('right.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(1264,800))
     
     def connectToCamera(self,indexVideo):
-            
+
+        # logging.debug('This is a debug message')
+        # logging.info('This is an info message')
+        # logging.warning('This is a warning message')
+        # logging.error('This is an error message')
+        # logging.critical('This is a critical message')
+
         cap = cv2.VideoCapture(indexVideo)
 
         if not cap.isOpened:

@@ -13,12 +13,14 @@ import numpy as np
 import logging
 import time
 import cv2
+from matplotlib import pyplot as plt
 
 from Utils.utils import CameraStatusUi
-
 from controlCamera import ControlCamera 
 from controlCamera import StatusCamera
 from getFrame import GetFrame
+from getFrame import Resolutions
+from depthMapProcessor import DepthMapProcessor
 
 # --------------------------------
 # Creamos la Clase de la Interfaz
@@ -27,6 +29,8 @@ from getFrame import GetFrame
 class Window(QMainWindow):
 
     statusCameraUi = 0
+    cameraResolution = Resolutions.RES_2560x800
+    cameraFps = 8
 
     def __init__(self):
         # --------------------------------
@@ -40,21 +44,20 @@ class Window(QMainWindow):
         # self.setFixedHeight(650)
         # self.setFixedWidth(800)
         self.setWindowTitle("Ps5 Camera GUI")
-
         self.controlCamera = ControlCamera()
-        
         self.getFrame = GetFrame()
 
-        # --------------------------------
-        # Se agregan todos los widgets
-
         self.setGrid()
-
         self.setVideoControlPanel()
         self.setVideoCameraPanel()
         # self.applyStyles()
 
         self.updateCameraStatus()
+
+        npRet = np.load('DepthParams/param_ret.npy')
+        npK = np.load('DepthParams/param_K.npy')
+        npDist = np.load('DepthParams/param_dist.npy')
+        self.depthMapProcessor = DepthMapProcessor(npRet,npK,npDist)
 
     def setGrid(self):
         # --------------------------------
@@ -364,7 +367,7 @@ class Window(QMainWindow):
         # Boton para la carga de firmware
         self.btnConnectCamera = QPushButton(text="Conectar camara")
         self.btnConnectCamera.setEnabled(True)
-        self.btnConnectCamera.clicked.connect(self.initCameraBtn)
+        self.btnConnectCamera.clicked.connect(self.actionCameraBtn)
         self.videoControlLayout.addWidget(self.btnConnectCamera)
 
         # Combo box para seleccionar el indice de la camera a utilizar 
@@ -378,12 +381,12 @@ class Window(QMainWindow):
 
         self.comboSourceCamera.addItems(sourceCameras)
         self.comboSourceCamera.currentIndexChanged.connect(self.changeSourceCameras)
-        # self.combo_resolution.setEnabled(False)
+        self.comboSourceCamera.setEnabled(False)
         self.videoControlLayout.addWidget(self.comboSourceCamera)
         self.comboSourceCamera.setCurrentIndex(0)
 
         # Combo box para seleccionar la resolucion de la camara
-        self.combo_resolution= QComboBox()
+        self.comboResolution= QComboBox()
         resolutions = [
             "3448x808 8fps",
             "3448x808 30fps",
@@ -393,10 +396,10 @@ class Window(QMainWindow):
             "2560x800 60fps",
         ]
 
-        self.combo_resolution.addItems(resolutions)
-        self.combo_resolution.currentIndexChanged.connect(self.changeResolution)
-        # self.combo_resolution.setEnabled(False)
-        self.videoControlLayout.addWidget(self.combo_resolution)
+        self.comboResolution.addItems(resolutions)
+        self.comboResolution.currentIndexChanged.connect(self.changeResolution)
+        self.comboResolution.setEnabled(False)
+        self.videoControlLayout.addWidget(self.comboResolution)
 
         # Boton para tomar una captura
         self.btnTakeSnapshot = QPushButton(text="Take snapshot")
@@ -456,7 +459,7 @@ class Window(QMainWindow):
         self.videoLayout.addWidget(self.video_labelDepthMap, 1, 0, 1, 2)
         self.setLayout(self.videoLayout)
 
-    def update_frame(self):
+    def updateFrames(self):
         frameR,frameL = self.getFrame.getNewFrame(self.video_capture)
 
         frame = cv2.cvtColor(frameL, cv2.COLOR_BGR2RGB)                            # Convertir el fotograma a RGB
@@ -465,12 +468,19 @@ class Window(QMainWindow):
         frame = cv2.cvtColor(frameR, cv2.COLOR_BGR2RGB)                            # Convertir el fotograma a RGB
         self.video_labelR.setPixmap(self.convertFrameToQt(frame))                  # Mostrar el fotograma en el QLabel
 
-    def convertFrameToQt(self,frame):
+        depthMap,depthMapColor,points = self.depthMapProcessor.processFrame(frameL,frameR)
+
+        frame = depthMapColor
+        frame = cv2.cvtColor(depthMapColor, cv2.COLOR_BGR2RGB)                     # Convertir el fotograma a RGB
+        self.video_labelDepthMap.setPixmap(self.convertFrameToQt(frame,self.video_labelDepthMap.width(),self.video_labelDepthMap.height()))           # Mostrar el fotograma en el QLabel
+        
+
+    def convertFrameToQt(self,frame,scaledWidth = 300, scaledHeight = 240):
         h, w, ch = frame.shape
         bytes_per_line = ch * w
         convert_to_qt_format = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(convert_to_qt_format)
-        pixmap = pixmap.scaled(300, 240, Qt.KeepAspectRatio)
+        pixmap = pixmap.scaled(scaledWidth,scaledHeight, Qt.KeepAspectRatio)
 
         return pixmap
 
@@ -655,12 +665,10 @@ class Window(QMainWindow):
         self.setStyleSheet("background-color:#F4F6F6;")
 
     def startVideoStream(self):
-        print("start vvideo stream")
         try:
-            self.video_capture = self.getFrame.connectToCamera(self.comboSourceCamera.currentIndex())
-            # Iniciar el temporizador para actualizar el video
-            self.timer = QTimer(self)
-            self.timer.timeout.connect(self.update_frame)
+            self.video_capture = self.getFrame.connectToCamera(self.comboSourceCamera.currentIndex())       # TODO: implementar cambio de resolucion
+            self.timer = QTimer(self)       # Iniciar el temporizador para actualizar el video
+            self.timer.timeout.connect(self.updateFrames)
             self.timer.start(30)  # Actualizar cada 30 milisegundos
         except:
             return False
@@ -670,8 +678,28 @@ class Window(QMainWindow):
     def stopVideoStream(self):
         self.timer.stop()
 
-    def changeResolution(self,index):                               # TODO: implementar
-        print("Change resolution index: "+str(index))
+    def changeResolution(self,index):                   # optimizar
+        if (index == 0):
+            self.cameraResolution = Resolutions.RES_2560x800
+            self.cameraFps = 8
+        elif (index == 1):
+            self.cameraResolution = Resolutions.RES_2560x800
+            self.cameraFps = 30
+        elif (index == 2):
+            self.cameraResolution = Resolutions.RES_2560x800
+            self.cameraFps = 60
+        elif (index == 3):
+            self.cameraResolution = Resolutions.RES_3448x808
+            self.cameraFps = 8
+        elif (index == 4):
+            self.cameraResolution = Resolutions.RES_3448x808
+            self.cameraFps = 30
+        elif (index == 5):
+            self.cameraResolution = Resolutions.RES_3448x808
+            self.cameraFps = 60
+
+        self.stopVideoStream()
+        self.startVideoStream()
 
     def changeSourceCameras(self,index):
         print("Change source camera index: "+str(index))
@@ -690,6 +718,9 @@ class Window(QMainWindow):
             self.btnConnectCamera.setText("Buscar camara")
         elif (status == CameraStatusUi.STREAM_RUNNING):
             self.btnConnectCamera.setText("Parar stream")
+
+        self.comboSourceCamera.setEnabled(status == CameraStatusUi.STREAM_RUNNING)
+        self.comboResolution.setEnabled(status == CameraStatusUi.STREAM_RUNNING)
     
     def updateCameraStatus(self):
         statusCameraHardware = self.controlCamera.getCameraStatus()
@@ -700,7 +731,7 @@ class Window(QMainWindow):
         else:
             self.setStatusCameraUi( CameraStatusUi.CONNECTED)
     
-    def initCameraBtn(self):
+    def actionCameraBtn(self):
         if (self.statusCameraUi == CameraStatusUi.WAITING_FW):
             self.loadFirmware()
         elif (self.statusCameraUi == CameraStatusUi.CONNECTED):

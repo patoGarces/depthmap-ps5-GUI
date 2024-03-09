@@ -21,6 +21,8 @@ from controlCamera import StatusCamera
 from getFrame import GetFrame
 from getFrame import Resolutions
 from depthMapProcessor import DepthMapProcessor
+from plotterClasses import DrawOutput2D
+from plotterClasses import DrawOutput3D
 
 # --------------------------------
 # Creamos la Clase de la Interfaz
@@ -46,6 +48,8 @@ class Window(QMainWindow):
         self.setWindowTitle("Ps5 Camera GUI")
         self.controlCamera = ControlCamera()
         self.getFrame = GetFrame()
+        # self.drawOutput2D = DrawOutput2D()
+        # self.drawOutput3D = DrawOutput3D()
 
         self.setGrid()
         self.setVideoControlPanel()
@@ -339,8 +343,7 @@ class Window(QMainWindow):
         self.gb_videoControl.setLayout(self.videoControlLayout)
 
         self.Grid_layout.addWidget(self.gb_videoControl, 0, 1, 1, 1)
-
-
+        
         # Label de status
         self.labelStatus = QLabel(parent=self.gb_videoControl)
         self.labelStatus.setText("Desconectado")
@@ -470,10 +473,49 @@ class Window(QMainWindow):
 
         depthMap,depthMapColor,points = self.depthMapProcessor.processFrame(frameL,frameR)
 
+        # print(np.shape(points))
+        self.updatePlot(points,200)
+
         frame = depthMapColor
         frame = cv2.cvtColor(depthMapColor, cv2.COLOR_BGR2RGB)                     # Convertir el fotograma a RGB
         self.video_labelDepthMap.setPixmap(self.convertFrameToQt(frame,self.video_labelDepthMap.width(),self.video_labelDepthMap.height()))           # Mostrar el fotograma en el QLabel
-        
+ 
+    def initPlot(self):
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
+        self.ax.set_xlim([-3, 3])
+        self.ax.set_ylim([0, 3])
+
+        # Configuración inicial del gráfico
+        self.line, = self.ax.plot([], [], label='Average Line')
+        self.ax.set_xlabel('X')
+        self.ax.set_ylabel('Z')
+        self.ax.set_title('Promedio 2D alrededor de una Altura Específica')
+        self.ax.legend(loc='lower left')
+        self.lastNframes = []
+
+    def updatePlot(self, points, height):
+        # Selecciona las filas alrededor de la altura deseada
+        start_height = max(0, height - 5)
+        end_height = min(points.shape[0] - 1, height + 5)
+        lines_around = points[start_height:end_height + 1, :, :]
+
+        # Agrega el frame actual a last_three_frames y mantiene solo los últimos 3 frames
+        self.lastNframes.append(lines_around)
+        if len(self.lastNframes) > 1:
+            self.lastNframes.pop(0)
+
+        # Calcula el promedio a lo largo del ancho utilizando los últimos 3 frames
+        average_line_over_frames = np.mean(np.array(self.lastNframes), axis=(0, 1))
+
+        # Actualiza los datos del gráfico con la línea suavizada
+        self.line.set_xdata(average_line_over_frames[:, 0])
+        self.line.set_ydata(average_line_over_frames[:, 2])
+
+        # Activa la cuadrícula solo para la línea
+        self.line.axes.grid(True)
+
+        # Actualiza la visualización
+        plt.pause(0.1)  # Añade una pausa para visualizar los cambios
 
     def convertFrameToQt(self,frame,scaledWidth = 300, scaledHeight = 240):
         h, w, ch = frame.shape
@@ -665,8 +707,10 @@ class Window(QMainWindow):
         self.setStyleSheet("background-color:#F4F6F6;")
 
     def startVideoStream(self):
+
+        self.initPlot()
         try:
-            self.video_capture = self.getFrame.connectToCamera(self.comboSourceCamera.currentIndex())       # TODO: implementar cambio de resolucion
+            self.video_capture = self.getFrame.connectToCamera(1)#self.comboSourceCamera.currentIndex())       # TODO: borrar hardcode e implementar cambio de resolucion
             self.timer = QTimer(self)       # Iniciar el temporizador para actualizar el video
             self.timer.timeout.connect(self.updateFrames)
             self.timer.start(30)  # Actualizar cada 30 milisegundos
@@ -761,7 +805,7 @@ if __name__ == "__main__":
 
     w = Window()
 
-    w.show()  # Mostramos la ventana
+    w.show()
 
     sys.stdout.flush()
     sys.exit(App.exec_())

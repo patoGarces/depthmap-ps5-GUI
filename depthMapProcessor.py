@@ -66,10 +66,10 @@ class DepthMapProcessor:
         # frameR, frameL = decode(frame)
 
         #Undistort images
-        #img_1_undistorted = cv2.undistort(frameL, K, dist, None, new_camera_matrix)
-        #img_2_undistorted = cv2.undistort(frameR, K, dist, None, new_camera_matrix)
-        #img_1_undistorted= cv2.remap(frameL,mapx,mapy, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)  
-        #img_2_undistorted= cv2.remap(frameR,mapx,mapy, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)
+        # frameL = cv2.undistort(frameL, self.K, self.dist, None, self.new_camera_matrix)
+        # frameR = cv2.undistort(frameR, self.K, self.dist, None, self.new_camera_matrix)
+        # frameL= cv2.remap(frameL,self.mapx,self.mapy, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)  
+        # frameR= cv2.remap(frameR,self.mapx,self.mapy, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)
 
         #downsample image for higher speed
         frameL_downsampled = cv2.pyrDown(cv2.cvtColor(frameL, cv2.COLOR_BGR2GRAY))
@@ -92,7 +92,7 @@ class DepthMapProcessor:
         denoised= cv2.morphologyEx(dispC,cv2.MORPH_CLOSE,  self.kernel)
         
         #apply color map
-        disp_Color= cv2.applyColorMap(denoised,cv2.COLORMAP_OCEAN)
+        disp_Color= cv2.applyColorMap(denoised,cv2.COLORMAP_JET)#cv2.COLORMAP_OCEAN)
         
         f = 0.3*self.w                          # 30cm focal length
         Q = np.float32([[1, 0, 0, -0.5*new_w],
@@ -100,8 +100,6 @@ class DepthMapProcessor:
                         [0, 0, 0,      f],      # so that y-axis looks up
                         [0, 0, 1,      0]])
         points = cv2.reprojectImageTo3D(disp, Q)
-
-        print(np.shape(points))
 
         # z_values = points[:,:,2]
         # z_values = z_values.flatten()

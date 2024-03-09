@@ -1,10 +1,9 @@
 # --------------------------------
 # Importamos librearías a utilizar
-
+from PyQt5 import QtGui
 from PyQt5.QtWidgets import *
 from PyQt5.Qt import *
 from PyQt5.QtGui import *
-from PyQt5 import QtGui
 from PyQt5.QtCore import *
 from PyQt5.QtCore import QTimer, Qt
 
@@ -370,21 +369,6 @@ class Window(QMainWindow):
         self.btnConnectCamera.clicked.connect(self.actionCameraBtn)
         self.videoControlLayout.addWidget(self.btnConnectCamera)
 
-        # Combo box para seleccionar el indice de la camera a utilizar 
-        self.comboSourceCamera= QComboBox()
-        sourceCameras = [
-            "Source 0",
-            "Source 1",
-            "Source 2",
-            "Source 3",
-        ]
-
-        self.comboSourceCamera.addItems(sourceCameras)
-        self.comboSourceCamera.currentIndexChanged.connect(self.changeSourceCameras)
-        self.comboSourceCamera.setEnabled(False)
-        self.videoControlLayout.addWidget(self.comboSourceCamera)
-        self.comboSourceCamera.setCurrentIndex(0)
-
         # Combo box para seleccionar la resolucion de la camara
         self.comboResolution= QComboBox()
         resolutions = [
@@ -666,7 +650,7 @@ class Window(QMainWindow):
 
     def startVideoStream(self):
         try:
-            self.video_capture = self.getFrame.connectToCamera(self.comboSourceCamera.currentIndex())       # TODO: implementar cambio de resolucion
+            self.video_capture = self.getFrame.connectToCamera('VID_05A9')          # TODO: quitar el vid hardcode
             self.timer = QTimer(self)       # Iniciar el temporizador para actualizar el video
             self.timer.timeout.connect(self.updateFrames)
             self.timer.start(30)  # Actualizar cada 30 milisegundos
@@ -719,7 +703,6 @@ class Window(QMainWindow):
         elif (status == CameraStatusUi.STREAM_RUNNING):
             self.btnConnectCamera.setText("Parar stream")
 
-        self.comboSourceCamera.setEnabled(status == CameraStatusUi.STREAM_RUNNING)
         self.comboResolution.setEnabled(status == CameraStatusUi.STREAM_RUNNING)
     
     def updateCameraStatus(self):
@@ -728,7 +711,7 @@ class Window(QMainWindow):
             self.setStatusCameraUi(CameraStatusUi.NOT_FOUND)
         elif( statusCameraHardware == StatusCamera.CAMERA_CONNECTED_PENDING_FW ):
             self.setStatusCameraUi(CameraStatusUi.WAITING_FW)
-        else:
+        elif( statusCameraHardware == StatusCamera.CAMERA_CONNECTED_OK ):
             self.setStatusCameraUi( CameraStatusUi.CONNECTED)
     
     def actionCameraBtn(self):

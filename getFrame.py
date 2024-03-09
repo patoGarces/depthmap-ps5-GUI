@@ -1,7 +1,6 @@
-import numpy as np
 import cv2
-from matplotlib import pyplot as plt
 from enum import Enum
+from cv2_enumerate_cameras import enumerate_cameras
 
 class GetFrame:
 
@@ -21,11 +20,23 @@ class GetFrame:
         # Mostrar la cantidad de cámaras conectadas
         print(f"Se encontraron {contCamera} cámara(s) conectada(s).")
         return contCamera
-
     
-    def connectToCamera(self,indexVideo,resolution = 1,fps = 30):
+    def connectToCamera(self,vid,resolution = 1,fps = 30):
 
-        cap = cv2.VideoCapture(indexVideo)
+        cameraIndex = -1
+        contIndex = 0
+        for camera_info in enumerate_cameras(cv2.CAP_MSMF): # or cv2.CAP_DSHOW
+
+            if( vid.lower() in camera_info.path.lower()):
+                cameraIndex = contIndex
+                print( 'Search pid:' + str(vid.lower()) + ' Camera path: ' + str(camera_info.path.lower()) )
+                print('camera index found: ' + str(contIndex))
+                break
+            contIndex+=1
+
+        if( cameraIndex == -1 ):
+            return None
+        cap = cv2.VideoCapture(cameraIndex)
 
         if not cap.isOpened:
             print("Camera is not found")

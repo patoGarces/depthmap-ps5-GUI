@@ -101,8 +101,6 @@ class DepthMapProcessor:
                         [0, 0, 1,      0]])
         points = cv2.reprojectImageTo3D(disp, Q)
 
-        print(np.shape(points))
-
         # z_values = points[:,:,2]
         # z_values = z_values.flatten()
         # indices = z_values.argsort()

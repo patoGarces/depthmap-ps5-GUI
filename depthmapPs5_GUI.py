@@ -12,7 +12,9 @@ import numpy as np
 import logging
 import time
 import cv2
-from matplotlib import pyplot as plt
+from reactivex import create
+from reactivex import operators as ops
+
 
 from Utils.utils import CameraStatusUi
 from controlCamera import ControlCamera 
@@ -25,38 +27,33 @@ from depthMapProcessor import DepthMapProcessor
 # Creamos la Clase de la Interfaz
 
 
-class Window(QMainWindow):
+class UIManager(QMainWindow):
 
     statusCameraUi = 0
     cameraResolution = Resolutions.RES_2560x800
     cameraFps = 8
 
-    def __init__(self):
+    def __init__(self,_controlCamera,_getFrame,_depthMapProcessor):
         # --------------------------------
         # Esta línea es importante para que funcione el programa
         QMainWindow.__init__(self)
         super(QMainWindow, self).__init__(parent=None)
 
+        self.controlCamera = controlCamera
+        self.getFrame = _getFrame
+        self.depthMapProcessor = _depthMapProcessor
         # --------------------------------
         # Propiedades de la ventana
-
         # self.setFixedHeight(650)
         # self.setFixedWidth(800)
         self.setWindowTitle("Ps5 Camera GUI")
-        self.controlCamera = ControlCamera()
-        self.getFrame = GetFrame()
-
         self.setGrid()
         self.setVideoControlPanel()
         self.setVideoCameraPanel()
         # self.applyStyles()
 
         self.updateCameraStatus()
-
-        npRet = np.load('DepthParams/param_ret.npy')
-        npK = np.load('DepthParams/param_K.npy')
-        npDist = np.load('DepthParams/param_dist.npy')
-        self.depthMapProcessor = DepthMapProcessor(npRet,npK,npDist)
+        self.setObserverGetFrames()
 
     def setGrid(self):
         # --------------------------------
@@ -66,279 +63,18 @@ class Window(QMainWindow):
         self.Grid_layout = QGridLayout()
         self.Grid_layout.setSpacing(2)
         self.MainWidget.setLayout(self.Grid_layout)
-
-    def setLabels(self):
-        # --------------------------------
-        # Label para mostrar la variable articular Q1
-
-        self.lbl_Q1 = QLabel(parent=self.gb_JPositions)
-        self.lbl_Q1.setText("Q1")
-        self.lbl_Q1.setFixedHeight(45)
-        self.lbl_Q1.setAlignment(Qt.AlignCenter)
-
-        # --------------------------------
-        # Label para mostrar la variable articular Q2
-
-        self.lbl_Q2 = QLabel(parent=self.gb_JPositions)
-        self.lbl_Q2.setText("Q2")
-        self.lbl_Q2.setFixedHeight(45)
-        self.lbl_Q2.setAlignment(Qt.AlignCenter)
-
-        # --------------------------------
-        # Label para mostrar la variable articular Q3
-
-        self.lbl_Q3 = QLabel(parent=self.gb_JPositions)
-        self.lbl_Q3.setText("Q3")
-        self.lbl_Q3.setFixedHeight(45)
-        self.lbl_Q3.setAlignment(Qt.AlignCenter)
-        # --------------------------------
-        # Angulo Q1
-
-        self.lbl_angQ1 = QLabel(parent=self.gb_JPositions)
-        self.lbl_angQ1.setText("0.0°")
-        self.lbl_angQ1.setFixedHeight(45)
-        self.lbl_angQ1.setAlignment(Qt.AlignCenter)
-
-        # --------------------------------
-        # Angulo Q2
-
-        self.lbl_angQ2 = QLabel(parent=self.gb_JPositions)
-        self.lbl_angQ2.setText("0.0°")
-        self.lbl_angQ2.setFixedHeight(45)
-        self.lbl_angQ2.setAlignment(Qt.AlignCenter)
-
-        # --------------------------------
-        # Angulo Q3
-
-        self.lbl_angQ3 = QLabel(parent=self.gb_JPositions)
-        self.lbl_angQ3.setText("0.0°")
-        self.lbl_angQ3.setFixedHeight(45)
-        self.lbl_angQ3.setAlignment(Qt.AlignCenter)
-
-        self.lyt_JPositions.addWidget(self.lbl_Q1, 0, 0, 1, 1)
-        self.lyt_JPositions.addWidget(self.lbl_Q2, 0, 1, 1, 1)
-        self.lyt_JPositions.addWidget(self.lbl_Q3, 0, 2, 1, 1)
-        self.lyt_JPositions.addWidget(self.lbl_angQ1, 1, 0, 1, 1)
-        self.lyt_JPositions.addWidget(self.lbl_angQ2, 1, 1, 1, 1)
-        self.lyt_JPositions.addWidget(self.lbl_angQ3, 1, 2, 1, 1)
-
-        # --------------------------------
-        # Label para entrada de Posiciones X,Y,Z
-
-        self.lbl_Px = QLabel(parent=self.gb_JPositions)
-        self.lbl_Px.setText("Px")
-        self.lbl_Px.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Py = QLabel(parent=self.gb_JPositions)
-        self.lbl_Py.setText("Py")
-        self.lbl_Py.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Pz = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pz.setText("Pz")
-        self.lbl_Pz.setAlignment(Qt.AlignCenter)
-
-        self.lyt_inputs.addWidget(self.lbl_Px, 0, 0, 1, 1)
-        self.lyt_inputs.addWidget(self.lbl_Py, 1, 0, 1, 1)
-        self.lyt_inputs.addWidget(self.lbl_Pz, 2, 0, 1, 1)
-
-        # Label de error, por defecto oculto
-        self.lbl_err_Pxyz = QLabel(parent=self.gb_JPositions)
-        self.lbl_err_Pxyz.setStyleSheet(
-            "color: red; font-size: 12px; font-family: 'Consolas'; "
-        )
-        self.lbl_err_Pxyz.setText("Revise los campos de entrada")
-        self.lbl_err_Pxyz.setAlignment(Qt.AlignCenter)
-        self.lbl_err_Pxyz.setVisible(False)
-        self.lyt_JPositions.addWidget(self.lbl_err_Pxyz, 3, 0, 1, 3)
-
-        # --------------------------------
-        # Label para entrada de Posiciones Xi,Yi,Zi y Xf,Yf,Zf
-
-        self.lbl_Pxi = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pxi.setText("Pxi")
-        self.lbl_Pxi.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Pyi = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pyi.setText("Pyi")
-        self.lbl_Pyi.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Pzi = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pzi.setText("Pzi")
-        self.lbl_Pzi.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Pxf = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pxf.setText("Pxf")
-        self.lbl_Pxf.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Pyf = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pyf.setText("Pyf")
-        self.lbl_Pyf.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Pzf = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pzf.setText("Pzf")
-        self.lbl_Pzf.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Pinicial = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pinicial.setText("Initial Point")
-        self.lbl_Pinicial.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Pfinal = QLabel(parent=self.gb_JPositions)
-        self.lbl_Pfinal.setText("Final Point")
-        self.lbl_Pfinal.setAlignment(Qt.AlignCenter)
-
-        self.lyt_TypeMove.addWidget(self.lbl_Pinicial, 0, 1, 1, 1)
-        self.lyt_TypeMove.addWidget(self.lbl_Pxi, 1, 0, 1, 1)
-        self.lyt_TypeMove.addWidget(self.lbl_Pyi, 2, 0, 1, 1)
-        self.lyt_TypeMove.addWidget(self.lbl_Pzi, 3, 0, 1, 1)
-
-        self.lyt_TypeMove.addWidget(self.lbl_Pfinal, 0, 3, 1, 1)
-        self.lyt_TypeMove.addWidget(self.lbl_Pxf, 1, 2, 1, 1)
-        self.lyt_TypeMove.addWidget(self.lbl_Pyf, 2, 2, 1, 1)
-        self.lyt_TypeMove.addWidget(self.lbl_Pzf, 3, 2, 1, 1)
-
-        self.lbl_points_qty = QLabel(parent=self.gb_JPositions)
-        self.lbl_points_qty.setText("Points")
-        self.lbl_points_qty.setAlignment(Qt.AlignCenter)
-
-        self.lyt_TypeMove.addWidget(self.lbl_points_qty, 4, 0, 1, 1)
-
-        self.lbl_Q1value = QLabel(parent=self.gb_artValue)
-        self.lbl_Q1value.setText("Q1")
-        self.lbl_Q1value.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Q2value = QLabel(parent=self.gb_artValue)
-        self.lbl_Q2value.setText("Q2")
-        self.lbl_Q2value.setAlignment(Qt.AlignCenter)
-
-        self.lbl_Q3value = QLabel(parent=self.gb_artValue)
-        self.lbl_Q3value.setText("Q3")
-        self.lbl_Q3value.setAlignment(Qt.AlignCenter)
-
-        self.lyt_art_value.addWidget(self.lbl_Q1value, 0, 0, 1, 1)
-        self.lyt_art_value.addWidget(self.lbl_Q2value, 0, 1, 1, 1)
-        self.lyt_art_value.addWidget(self.lbl_Q3value, 0, 2, 1, 1)
-
-    def setInputs(self):
-        self.inpt_Px = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Px.setValidator(QDoubleValidator())
-        self.inpt_Px.setMaxLength(10)
-        self.inpt_Px.setAlignment(Qt.AlignRight)
-        self.inpt_Px.setEnabled(False)
-        self.inpt_Px.setText("0")
-
-        self.inpt_Py = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Py.setValidator(QDoubleValidator())
-        self.inpt_Py.setMaxLength(10)
-        self.inpt_Py.setAlignment(Qt.AlignRight)
-        self.inpt_Py.setEnabled(False)
-        self.inpt_Py.setText("0")
-
-        self.inpt_Pz = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Pz.setValidator(QDoubleValidator())
-        self.inpt_Pz.setMaxLength(10)
-        self.inpt_Pz.setAlignment(Qt.AlignRight)
-        self.inpt_Pz.setEnabled(False)
-        self.inpt_Pz.setText("0")
-
-        self.lyt_inputs.addWidget(self.inpt_Px, 0, 1, 1, 1)
-        self.lyt_inputs.addWidget(self.inpt_Py, 1, 1, 1, 1)
-        self.lyt_inputs.addWidget(self.inpt_Pz, 2, 1, 1, 1)
-
-        self.inpt_Pxi = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Pxi.setValidator(QDoubleValidator())
-        self.inpt_Pxi.setMaxLength(10)
-        self.inpt_Pxi.setAlignment(Qt.AlignRight)
-        self.inpt_Pxi.setEnabled(False)
-        self.inpt_Pxi.setText("0")
-
-        self.inpt_Pyi = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Pyi.setValidator(QDoubleValidator())
-        self.inpt_Pyi.setMaxLength(10)
-        self.inpt_Pyi.setAlignment(Qt.AlignRight)
-        self.inpt_Pyi.setEnabled(False)
-        self.inpt_Pyi.setText("0")
-
-        self.inpt_Pzi = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Pzi.setValidator(QDoubleValidator())
-        self.inpt_Pzi.setMaxLength(10)
-        self.inpt_Pzi.setAlignment(Qt.AlignRight)
-        self.inpt_Pzi.setEnabled(False)
-        self.inpt_Pzi.setText("0")
-
-        self.inpt_Pxf = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Pxf.setValidator(QDoubleValidator())
-        self.inpt_Pxf.setMaxLength(10)
-        self.inpt_Pxf.setAlignment(Qt.AlignRight)
-        self.inpt_Pxf.setEnabled(False)
-        self.inpt_Pxf.setText("0")
-
-        self.inpt_Pyf = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Pyf.setValidator(QDoubleValidator())
-        self.inpt_Pyf.setMaxLength(10)
-        self.inpt_Pyf.setAlignment(Qt.AlignRight)
-        self.inpt_Pyf.setEnabled(False)
-        self.inpt_Pyf.setText("0")
-
-        self.inpt_Pzf = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_Pzf.setValidator(QDoubleValidator())
-        self.inpt_Pzf.setMaxLength(10)
-        self.inpt_Pzf.setAlignment(Qt.AlignRight)
-        self.inpt_Pzf.setEnabled(False)
-        self.inpt_Pzf.setText("0")
-
-        self.lyt_TypeMove.addWidget(self.inpt_Pxi, 1, 1, 1, 1)
-        self.lyt_TypeMove.addWidget(self.inpt_Pyi, 2, 1, 1, 1)
-        self.lyt_TypeMove.addWidget(self.inpt_Pzi, 3, 1, 1, 1)
-        self.lyt_TypeMove.addWidget(self.inpt_Pxf, 1, 3, 1, 1)
-        self.lyt_TypeMove.addWidget(self.inpt_Pyf, 2, 3, 1, 1)
-        self.lyt_TypeMove.addWidget(self.inpt_Pzf, 3, 3, 1, 1)
-
-        self.inpt_points_qty = QLineEdit(parent=self.gb_Inputs)
-        self.inpt_points_qty.setValidator(QDoubleValidator())
-        self.inpt_points_qty.setMaxLength(10)
-        self.inpt_points_qty.setAlignment(Qt.AlignRight)
-        self.inpt_points_qty.setEnabled(False)
-        self.inpt_points_qty.setText("1")
-
-        self.lyt_TypeMove.addWidget(self.inpt_points_qty, 4, 1, 1, 1)
-
-        self.inptQ1pos = QLineEdit(parent=self.gb_Inputs)
-        self.inptQ1pos.setValidator(QDoubleValidator())
-        self.inptQ1pos.setMaxLength(10)
-        self.inptQ1pos.setAlignment(Qt.AlignCenter)
-        self.inptQ1pos.setText("0")
-        self.inptQ1pos.setEnabled(False)
-
-        self.inptQ2pos = QLineEdit(parent=self.gb_Inputs)
-        self.inptQ2pos.setValidator(QDoubleValidator())
-        self.inptQ2pos.setMaxLength(10)
-        self.inptQ2pos.setAlignment(Qt.AlignCenter)
-        self.inptQ2pos.setText("0")
-        self.inptQ2pos.setEnabled(False)
-
-        self.inptQ3pos = QLineEdit(parent=self.gb_Inputs)
-        self.inptQ3pos.setValidator(QDoubleValidator())
-        self.inptQ3pos.setMaxLength(10)
-        self.inptQ3pos.setAlignment(Qt.AlignCenter)
-        self.inptQ3pos.setText("0")
-        self.inptQ3pos.setEnabled(False)
-
-        self.lyt_art_value.addWidget(self.inptQ1pos, 1, 0, 1, 1)
-        self.lyt_art_value.addWidget(self.inptQ2pos, 1, 1, 1, 1)
-        self.lyt_art_value.addWidget(self.inptQ3pos, 1, 2, 1, 1)
         
     def setVideoControlPanel(self):
 
-         # Cuadro de control de imagen
+         # Cuadro de control de camara
         self.videoControlLayout = QVBoxLayout()
         self.videoControlLayout.setSpacing(10)
         self.videoControlLayout.setAlignment(Qt.AlignTop)
 
-        self.gb_videoControl = QGroupBox("Control Image", parent=self)
+        self.gb_videoControl = QGroupBox("Control camera", parent=self)
         self.gb_videoControl.setLayout(self.videoControlLayout)
 
         self.Grid_layout.addWidget(self.gb_videoControl, 0, 1, 1, 1)
-
 
         # Label de status
         self.labelStatus = QLabel(parent=self.gb_videoControl)
@@ -372,12 +108,12 @@ class Window(QMainWindow):
         # Combo box para seleccionar la resolucion de la camara
         self.comboResolution= QComboBox()
         resolutions = [
-            "3448x808 8fps",
-            "3448x808 30fps",
-            "3448x808 60fps",
             "2560x800 8fps",
             "2560x800 30fps",
             "2560x800 60fps",
+            "3448x808 8fps",
+            "3448x808 30fps",
+            "3448x808 60fps",
         ]
 
         self.comboResolution.addItems(resolutions)
@@ -407,15 +143,15 @@ class Window(QMainWindow):
         self.video_labelL = QLabel("No video")             # Etiqueta para mostrar el video
         self.video_labelR = QLabel("No video")
 
-        self.video_labelR.setFixedWidth(426)
+        self.video_labelR.setFixedWidth(320)
         self.video_labelR.setFixedHeight(200)
-        self.video_labelL.setFixedWidth(426)
+        self.video_labelL.setFixedWidth(320)
         self.video_labelL.setFixedHeight(200)
 
         self.video_labelDepthMap = QLabel("No video")
 
-        self.video_labelDepthMap.setFixedWidth(854)
-        self.video_labelDepthMap.setFixedHeight(400)
+        self.video_labelDepthMap.setFixedWidth(660)
+        self.video_labelDepthMap.setFixedHeight(410)
 
         lbl_videoStyle = """
             QLabel
@@ -443,8 +179,8 @@ class Window(QMainWindow):
         self.videoLayout.addWidget(self.video_labelDepthMap, 1, 0, 1, 2)
         self.setLayout(self.videoLayout)
 
-    def updateFrames(self):
-        frameR,frameL = self.getFrame.getNewFrame(self.video_capture)
+    def updateFrames(self,frames):
+        frameR,frameL = frames
 
         frame = cv2.cvtColor(frameL, cv2.COLOR_BGR2RGB)                            # Convertir el fotograma a RGB
         self.video_labelL.setPixmap(self.convertFrameToQt(frame))                  # Mostrar el fotograma en el QLabel
@@ -458,7 +194,6 @@ class Window(QMainWindow):
         frame = cv2.cvtColor(depthMapColor, cv2.COLOR_BGR2RGB)                     # Convertir el fotograma a RGB
         self.video_labelDepthMap.setPixmap(self.convertFrameToQt(frame,self.video_labelDepthMap.width(),self.video_labelDepthMap.height()))           # Mostrar el fotograma en el QLabel
         
-
     def convertFrameToQt(self,frame,scaledWidth = 300, scaledHeight = 240):
         h, w, ch = frame.shape
         bytes_per_line = ch * w
@@ -650,19 +385,36 @@ class Window(QMainWindow):
 
     def startVideoStream(self):
         try:
-            self.video_capture = self.getFrame.connectToCamera('VID_05A9')          # TODO: quitar el vid hardcode
-            self.timer = QTimer(self)       # Iniciar el temporizador para actualizar el video
-            self.timer.timeout.connect(self.updateFrames)
-            self.timer.start(30)  # Actualizar cada 30 milisegundos
-        except:
+            self.getFrame.startStream()
+        except Exception as error :
+            print('error', error)
             return False
         else:
             return True
 
     def stopVideoStream(self):
-        self.timer.stop()
+        print("stopStream")
+        try:
+            self.getFrame.stopStream()
+        except Exception as error :
+            print('error', error)
+        
+        # subscription.dispose()
+
+    def setObserverGetFrames(self):
+        getFrameSubject = self.getFrame.getSubjectGetFrame()
+
+        self.subscription = getFrameSubject.pipe(
+            ops.map(lambda frames: frames),
+        ).subscribe(
+            on_next=lambda frames: self.updateFrames(frames),
+            on_error=lambda e: print(f"Error: {e}"),
+            on_completed=lambda: print("Stream completado"),
+        )
+        print("setObserverGetFrames")
 
     def changeResolution(self,index):                   # optimizar
+        print("index: ",index)
         if (index == 0):
             self.cameraResolution = Resolutions.RES_2560x800
             self.cameraFps = 8
@@ -683,11 +435,8 @@ class Window(QMainWindow):
             self.cameraFps = 60
 
         self.stopVideoStream()
-        self.startVideoStream()
-
-    def changeSourceCameras(self,index):
-        print("Change source camera index: "+str(index))
-        self.stopVideoStream()
+        print("Set camera resolution: ",self.cameraResolution)
+        getFrame.setCameraResolution( self.cameraResolution, self.cameraFps)       # TODO: deberia ser self
         self.startVideoStream()
 
     def setStatusCameraUi(self,status: CameraStatusUi):
@@ -742,7 +491,15 @@ if __name__ == "__main__":
     App = QApplication(sys.argv)
     App.setStyle("Fusion")
 
-    w = Window()
+    controlCamera = ControlCamera()
+    getFrame = GetFrame('VID_05A9')
+
+    npRet = np.load('DepthParams/param_ret.npy')
+    npK = np.load('DepthParams/param_K.npy')
+    npDist = np.load('DepthParams/param_dist.npy')
+    depthMapProcessor = DepthMapProcessor(npRet,npK,npDist)
+
+    w = UIManager(controlCamera,getFrame,depthMapProcessor)
 
     w.show()  # Mostramos la ventana
 

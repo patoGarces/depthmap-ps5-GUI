@@ -1,0 +1,6 @@
+Dependencias:
+	- import win32com.client
+	- from cv2_enumerate_cameras import enumerate_cameras
+	- PyQt5
+	- opencv2
+	- reactivex

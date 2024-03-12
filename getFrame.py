@@ -1,49 +1,24 @@
-import numpy as np
 import cv2
-from matplotlib import pyplot as plt
 from enum import Enum
+from cv2_enumerate_cameras import enumerate_cameras
+from reactivex import Subject
+import threading
 
 class GetFrame:
 
-    out_full = cv2.VideoWriter('full.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(3448,808))
-    out_left = cv2.VideoWriter('left.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(1264,800))
-    out_right = cv2.VideoWriter('right.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(1264,800))
+    # out_full = cv2.VideoWriter('full.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(3448,808))
+    # out_left = cv2.VideoWriter('left.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(1264,800))
+    # out_right = cv2.VideoWriter('right.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(1264,800))
 
-    def getCamerasConnected():
-        contCamera = 0
-        while True:
-            cap = cv2.VideoCapture(contCamera)
-            if not cap.isOpened():
-                break
-            cap.release()
-            contCamera += 1
-
-        # Mostrar la cantidad de cámaras conectadas
-        print(f"Se encontraron {contCamera} cámara(s) conectada(s).")
-        return contCamera
-
-    
-    def connectToCamera(self,indexVideo,resolution = 1,fps = 30):
-
-        cap = cv2.VideoCapture(indexVideo)
-
-        if not cap.isOpened:
-            print("Camera is not found")
-            return None
-        else:
-            # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3448)
-            # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 808)
-            # cap.set(cv2.CAP_PROP_FPS, 8)
-
-            if (resolution == Resolutions.RES_2560x800.value):   
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 2560)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
-            elif (resolution == Resolutions.RES_3448x808.value):
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3448)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 808)
-
-            cap.set(cv2.CAP_PROP_FPS, fps)
-            return cap
+    def __init__(self,vid):
+        self.subject = Subject()
+        self.flagRunning = threading.Event()
+        self.flagRunning.clear()
+        self.hilo_emision = None
+        self.vid = vid
+        
+    def getSubjectGetFrame(self):
+        return self.subject
 
     def decode(self,frame):
 
@@ -57,22 +32,74 @@ class GetFrame:
         
         return (left_frame, right_frame)
 
-    def getNewFrame(self,cap):
+    def getNewFrame(self):
 
-        ret, frame = cap.read()
-        left,right = self.decode(frame)
+        while self.flagRunning.isSet():
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+            left, right = self.decode(frame)
 
-        self.out_full.write(frame)
-        self.out_left.write(left)
-        self.out_right.write(right)
+            # self.out_full.write(frame)
+            # self.out_left.write(left)
+            # self.out_right.write(right)
 
-        return left,right
-    
+            self.subject.on_next((left, right))
+
+    def startStream(self, resolution, fps):
+        cameraIndex = -1
+        contIndex = 0
+        for camera_info in enumerate_cameras(cv2.CAP_MSMF): # or cv2.CAP_DSHOW
+
+            if( self.vid.lower() in camera_info.path.lower()):
+                cameraIndex = contIndex
+                break
+            contIndex+=1
+        
+        if( cameraIndex == -1 ):
+            print('GetFrames error camera no encontrada')
+            return False
+        
+        self.cap = cv2.VideoCapture(cameraIndex)
+
+        if not self.cap.isOpened:
+            print("Camera is not found")
+            return False
+        else:
+            # self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3448)
+            # self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 808)
+            # self.cap.set(cv2.CAP_PROP_FPS, 8)
+            try:
+                if (resolution == Resolutions.RES_2560x800):   
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 2560)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
+                elif (resolution == Resolutions.RES_3448x808):
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3448)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 808)
+                else:
+                    print("Error al seleccionar la resolucion,resValue: ",resolution)
+
+                self.cap.set(cv2.CAP_PROP_FPS, fps)
+
+                self.flagRunning.set()
+                self.hilo_emision = threading.Thread(target=self.getNewFrame)
+                self.hilo_emision.start()
+                return True
+            except Exception as error:
+                print("error: ",error)
+                return False
+
+    def stopStream(self):
+        self.flagRunning.clear()
+        self.hilo_emision = None
+        # self.cap.release()
+
     def showPreviewRgb(self,frameLeft,frameRight):
         left = cv2.resize(frameLeft,(int(256*3),int(108*4.5)))
         right = cv2.resize(frameRight,(int(256*3),int(108*4.5)))
         cv2.imshow('RGB left', left)
         cv2.imshow('RGB right', right)
+
 
 class Resolutions(Enum):          # TODO: implementar
     RES_3448x808 = 0

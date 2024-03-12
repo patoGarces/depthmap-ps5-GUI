@@ -21,10 +21,8 @@ class ControlCamera():
     def getCameraStatus(self):
         try:
             wmi = win32com.client.GetObject("winmgmts:")
-            # get just a deviceId with VID: 05A9
-            usbDevices = wmi.ExecQuery("SELECT * FROM Win32_PnPEntity WHERE PNPDeviceID LIKE '%VID_05A9%'") # TODO: use VID_PS5 constant
+            usbDevices = wmi.ExecQuery(f"SELECT * FROM Win32_PnPEntity WHERE PNPDeviceID LIKE '%{VID_PS5}%'")
 
-            print("Scanning")
             if (len(usbDevices) == 0):
                 print("Camera not found")
                 return StatusCamera.CAMERA_NOT_CONNECTED 
@@ -36,33 +34,10 @@ class ControlCamera():
                 elif( deviceId.DeviceID.find("VID_05A9&PID_058C") > 0):
                     print("Camera found-> with firmware")
                     return StatusCamera.CAMERA_CONNECTED_OK
-            # return StatusCamera   // TODO: borrar
         except Exception as error:
             print('error', error)
-
-
 
 class StatusCamera(Enum):
     CAMERA_NOT_CONNECTED = 1
     CAMERA_CONNECTED_PENDING_FW = 2
     CAMERA_CONNECTED_OK = 3
-
-# test code
-# controlCamera = ControlCamera()
-# print("Modo de prueba")
-# # controlCamera.getCameraStatus()
-# # print(controlCamera.loadFirmwareCamera())
-
-
-# statusCamera = controlCamera.getCameraStatus()
-# if( statusCamera == StatusCamera.CAMERA_NOT_CONNECTED ):
-#     print("Camera not found")
-# elif( statusCamera == StatusCamera.CAMERA_CONNECTED_PENDING_FW ):
-#     print("Trying load firmware")
-#     if( controlCamera.loadFirmwareCamera() == True ):
-#         print("Camera connected!")
-#     else:
-#         print("Error trying connect")
-# else:
-#     print("Camera already connect")
-

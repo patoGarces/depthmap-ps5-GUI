@@ -11,14 +11,10 @@ class DepthMapProcessor:
     #cap = cv2.VideoCapture("/home/sieuwe/Desktop/vidz/full_2.avi")
     #cap = cv2.VideoCapture("/home/sieuwe/Desktop/vidz/full_3.avi")
     #cap = cv2.VideoCapture("/home/sieuwe/Desktop/vidz/full_1.avi")
-    #cap = cv2.VideoCapture(2)
-    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3448)
-    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 808)
 
     kernel= np.ones((13,13),np.uint8)
 
     #Stereo matcher settings
-    win_size = 5
     min_disp = 10
     max_disp = 16 * 2 + 10
     num_disp = max_disp - min_disp # Needs to be divisible by 16
@@ -28,20 +24,39 @@ class DepthMapProcessor:
         self.ret = param_ret
         self.K = param_k
         self.dist = param_dist
+
+        self.mixerDepth = 0.5
         
         new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(self.K,self.dist,(self.w,self.h),1,(self.w,self.h))
 
         self.mapx, self.mapy = cv2.initUndistortRectifyMap(self.K,self.dist, None ,new_camera_matrix,(self.w, self.h),cv2.CV_16SC2)
+        self.setStereoSettings()
 
-        self.stereo = cv2.StereoSGBM_create(minDisparity= self.min_disp,
-        numDisparities =  self.num_disp,
-        blockSize = 5,
-        uniquenessRatio = 10,
-        speckleWindowSize = 1000,
-        speckleRange = 10,
-        disp12MaxDiff = 25,
-        P1 = 8*3* self.win_size**2,#8*3*win_size**2,
-        P2 =32*3* self.win_size**2) #32*3*win_size**2)
+    def setStereoSettings(self,_blockSize = 5,_winSize = 5):
+        
+        self.stereo = cv2.StereoSGBM_create(
+            minDisparity= self.min_disp,
+            numDisparities =  self.num_disp,
+            blockSize = _blockSize,
+            uniquenessRatio = 10,
+            speckleWindowSize = 1000,
+            speckleRange = 10,
+            disp12MaxDiff = 25,
+            P1 =     8*3* _winSize**2,
+            P2 =    32*3* _winSize**2
+        )
+
+    def changeMixDepthValue(self,_mixValue):
+        self.mixerDepth = _mixValue
+
+    def changeBlockSizeValue(self,_blockSize = 5):
+        self.setStereoSettings(_blockSize = _blockSize)
+
+    def changeWinSizeValue(self,_winSize = 5):
+        try:
+            self.setStereoSettings(_winSize = _winSize)
+        except Exception as error:
+            print("Error: ",error)
 
     def decode(self,frame):
         height, width, _ = frame.shape
@@ -58,13 +73,7 @@ class DepthMapProcessor:
         return 30 * 10/d
 
     def processFrame(self,frameL,frameR):
-
-        # ret, frame = cap.read()
-
         start = time.time()
-
-        # frameR, frameL = decode(frame)
-
         #Undistort images
         #img_1_undistorted = cv2.undistort(frameL, K, dist, None, new_camera_matrix)
         #img_2_undistorted = cv2.undistort(frameR, K, dist, None, new_camera_matrix)
@@ -114,8 +123,8 @@ class DepthMapProcessor:
 
         #visualize
         # cv2.imshow("Depth", disp_Color)
-        frameL = cv2.resize(frameL,(632, 400))
-        color_depth = cv2.addWeighted(frameL,0.4,disp_Color,0.4,0)
+        frameR = cv2.resize(frameR,(632, 400))
+        color_depth = cv2.addWeighted(frameR,1-self.mixerDepth,disp_Color,self.mixerDepth,0)
 
         end = time.time()
         fps = 1 / (end-start)

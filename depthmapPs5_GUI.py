@@ -39,7 +39,7 @@ class UIManager(QMainWindow):
         QMainWindow.__init__(self)
         super(QMainWindow, self).__init__(parent=None)
 
-        self.controlCamera = controlCamera
+        self.controlCamera = _controlCamera
         self.getFrame = _getFrame
         self.depthMapProcessor = _depthMapProcessor
         # --------------------------------
@@ -48,9 +48,9 @@ class UIManager(QMainWindow):
         # self.setFixedWidth(800)
         self.setWindowTitle("Ps5 Camera GUI")
         self.setGrid()
-        self.setVideoControlPanel()
-        self.setVideoCameraPanel()
-        # self.applyStyles()
+        self.setMenuControlPanel()
+        self.setVideoCameraView()
+        self.applyStyles()
 
         self.updateCameraStatus()
         self.setObserverGetFrames()
@@ -63,50 +63,35 @@ class UIManager(QMainWindow):
         self.Grid_layout = QGridLayout()
         self.Grid_layout.setSpacing(2)
         self.MainWidget.setLayout(self.Grid_layout)
-        
-    def setVideoControlPanel(self):
 
-         # Cuadro de control de camara
-        self.videoControlLayout = QVBoxLayout()
-        self.videoControlLayout.setSpacing(10)
-        self.videoControlLayout.setAlignment(Qt.AlignTop)
+    def setMenuControlPanel(self):
+        controlLayout = QVBoxLayout()
+        controlLayout.setAlignment(Qt.AlignTop)
 
-        self.gb_videoControl = QGroupBox("Control camera", parent=self)
-        self.gb_videoControl.setLayout(self.videoControlLayout)
+        # Cuadro de control de cámara arriba
+        videoControlLayout = QVBoxLayout()
+        videoControlLayout.setSpacing(10)
+        videoControlLayout.setAlignment(Qt.AlignTop)
 
-        self.Grid_layout.addWidget(self.gb_videoControl, 0, 1, 1, 1)
+        self.gb_videoControl = QGroupBox("Control de cámara", parent=self)
+        self.gb_videoControl.setLayout(videoControlLayout)
+        self.gb_videoControl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
         # Label de status
         self.labelStatus = QLabel(parent=self.gb_videoControl)
         self.labelStatus.setText("Desconectado")
-        # self.labelStatus.setFixedHeight(45)
         self.labelStatus.setAlignment(Qt.AlignCenter)
-        
-        lbl_statusStyle = """
-            QLabel
-            {
-                background-color: white; 
-                font-size: 18px;
-                color: black;
-                font-family: "Consolas";
-                font-weight: bold; 
-                border: 3px groove #212121;
-                border-radius: 5px;
-                padding: 15px;
-            }
-        """
-        self.labelStatus.setStyleSheet(lbl_statusStyle)
 
-        self.videoControlLayout.addWidget(self.labelStatus)
+        videoControlLayout.addWidget(self.labelStatus)
 
-        # Boton para la carga de firmware
-        self.btnConnectCamera = QPushButton(text="Conectar camara")
+        # Boton para conectar la camara
+        self.btnConnectCamera = QPushButton(text="Conectar cámara")
         self.btnConnectCamera.setEnabled(True)
         self.btnConnectCamera.clicked.connect(self.actionCameraBtn)
-        self.videoControlLayout.addWidget(self.btnConnectCamera)
+        videoControlLayout.addWidget(self.btnConnectCamera)
 
-        # Combo box para seleccionar la resolucion de la camara
-        self.comboResolution= QComboBox()
+        # Combo box para seleccionar la resolución de la cámara
+        self.comboResolution = QComboBox()
         resolutions = [
             "2560x800 8fps",
             "2560x800 30fps",
@@ -119,17 +104,67 @@ class UIManager(QMainWindow):
         self.comboResolution.addItems(resolutions)
         self.comboResolution.currentIndexChanged.connect(self.changeResolution)
         self.comboResolution.setEnabled(False)
-        self.videoControlLayout.addWidget(self.comboResolution)
+        videoControlLayout.addWidget(self.comboResolution)
 
-        # Boton para tomar una captura
-        self.btnTakeSnapshot = QPushButton(text="Take snapshot")
-        self.btnTakeSnapshot.setEnabled(False)
-        # self.btnTakeSnapshot.clicked.connect(self.EMER_STOP)
-        self.videoControlLayout.addWidget(self.btnTakeSnapshot)
+        # Cuadro de control de DepthMap abajo
+        depthControlLayout = QVBoxLayout()
+        depthControlLayout.setSpacing(10)
+        depthControlLayout.setAlignment(Qt.AlignTop)
 
-    def setVideoCameraPanel(self):
+        self.gb_depthControl = QGroupBox("Control de DepthMap", parent=self)
+        self.gb_depthControl.setLayout(depthControlLayout)
+        self.gb_depthControl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
-        # logging.warning('This is a warning message')
+        # Slider para ajustar el mix entre imagen RGB y depthMap
+        self.labelDepthValue = QLabel("Depth mixer: 0.50", self)
+
+        self.sliderMixerDepth = QSlider(Qt.Horizontal)
+        self.sliderMixerDepth.setMinimum(1)
+        self.sliderMixerDepth.setMaximum(100)
+        self.sliderMixerDepth.setValue(50)
+        self.sliderMixerDepth.setTickPosition(QSlider.TicksBelow)
+        self.sliderMixerDepth.setTickInterval(10)
+        self.sliderMixerDepth.valueChanged.connect(self.depthMixerChange)
+        
+        depthControlLayout.addWidget(self.labelDepthValue)
+        depthControlLayout.addWidget(self.sliderMixerDepth)
+
+        # Slider para ajustar blockSize
+        self.labelBlockSize = QLabel("Block size: 5", self)
+
+        self.sliderBlockSize = QSlider(Qt.Horizontal)
+        self.sliderBlockSize.setMinimum(1)
+        self.sliderBlockSize.setMaximum(20)
+        self.sliderBlockSize.setValue(5)
+        self.sliderBlockSize.setTickPosition(QSlider.TicksBelow)
+        self.sliderBlockSize.setTickInterval(1)
+        self.sliderBlockSize.valueChanged.connect(self.blockSizeChange)
+        
+        depthControlLayout.addWidget(self.labelBlockSize)
+        depthControlLayout.addWidget(self.sliderBlockSize)
+
+        # Slider para ajustar winsize
+        self.labelWinSize = QLabel("window size: 5", self)
+
+        self.sliderWinSize = QSlider(Qt.Horizontal)
+        self.sliderWinSize.setMinimum(1)
+        self.sliderWinSize.setMaximum(20)
+        self.sliderWinSize.setValue(5)
+        self.sliderWinSize.setTickPosition(QSlider.TicksBelow)
+        self.sliderWinSize.setTickInterval(1)
+        self.sliderWinSize.valueChanged.connect(self.winSizeChange)
+        
+        depthControlLayout.addWidget(self.labelWinSize)
+        depthControlLayout.addWidget(self.sliderWinSize)
+
+        # Agregar ambos grupos de controles al QVBoxLayout principal
+        controlLayout.addWidget(self.gb_videoControl, alignment=Qt.AlignTop)
+        controlLayout.addWidget(self.gb_depthControl, alignment=Qt.AlignTop)
+
+        # Agregar el QVBoxLayout al GridLayout
+        self.Grid_layout.addLayout(controlLayout, 0, 1, 1, 1)
+
+    def setVideoCameraView(self):
 
         # Cuadro de frames video
         self.videoLayout = QGridLayout()
@@ -153,6 +188,17 @@ class UIManager(QMainWindow):
         self.video_labelDepthMap.setFixedWidth(660)
         self.video_labelDepthMap.setFixedHeight(410)
 
+        self.video_labelL.setAlignment(Qt.AlignCenter)
+        self.video_labelR.setAlignment(Qt.AlignCenter)
+        self.video_labelDepthMap.setAlignment(Qt.AlignCenter)
+
+        self.videoLayout.addWidget(self.video_labelL, 0, 0, 1, 1)
+        self.videoLayout.addWidget(self.video_labelR, 0, 1, 1, 1)
+        self.videoLayout.addWidget(self.video_labelDepthMap, 1, 0, 1, 2)
+        self.setLayout(self.videoLayout)
+
+    def applyStyles(self):
+
         lbl_videoStyle = """
             QLabel
             {
@@ -170,15 +216,54 @@ class UIManager(QMainWindow):
         self.video_labelR.setStyleSheet(lbl_videoStyle)
         self.video_labelDepthMap.setStyleSheet(lbl_videoStyle)
 
-        self.video_labelL.setAlignment(Qt.AlignCenter)
-        self.video_labelR.setAlignment(Qt.AlignCenter)
-        self.video_labelDepthMap.setAlignment(Qt.AlignCenter)
+        styleSliders = """
+            QSlider {
+                background-color: transparent;  /* Fondo transparente */
+            }
 
-        self.videoLayout.addWidget(self.video_labelL, 0, 0, 1, 1)
-        self.videoLayout.addWidget(self.video_labelR, 0, 1, 1, 1)
-        self.videoLayout.addWidget(self.video_labelDepthMap, 1, 0, 1, 2)
-        self.setLayout(self.videoLayout)
+            QSlider::groove:horizontal {
+                border: 1px solid #7B7B7B;  /* Borde gris */
+                height: 4px;  /* Altura del slider */
+                background: #E0E0E0;  /* Fondo gris claro */
+                margin: 0px;
+            }
 
+            QSlider::handle:horizontal {
+                background: #BDBDBD;  /* Fondo gris más oscuro */
+                border: 1px solid #7B7B7B;  /* Borde gris */
+                width: 20px;  /* Ancho del control deslizante */
+                margin: -8px 0; /* Margen para centrar el control deslizante verticalmente */
+                border-radius: 10px;  /* Bordes redondeados del control deslizante */
+            }
+
+            QSlider::add-page:horizontal {
+                background: #E0E0E0;  /* Fondo gris claro */
+            }
+
+            QSlider::sub-page:horizontal {
+                background: #BDBDBD;  /* Fondo gris más oscuro */
+            }
+        """
+        
+        self.sliderMixerDepth.setStyleSheet(styleSliders)
+        self.sliderBlockSize.setStyleSheet(styleSliders)
+        self.sliderWinSize.setStyleSheet(styleSliders)
+
+        lbl_statusStyle = """
+            QLabel
+            {
+                background-color: white; 
+                font-size: 18px;
+                color: black;
+                font-family: "Consolas";
+                font-weight: bold; 
+                border: 3px groove #212121;
+                border-radius: 5px;
+                padding: 15px;
+            }
+        """
+        self.labelStatus.setStyleSheet(lbl_statusStyle)
+  
     def updateFrames(self,frames):
         frameR,frameL = frames
 
@@ -206,186 +291,9 @@ class UIManager(QMainWindow):
     def closeEvent(self, event):
         self.video_capture.release()  # Liberar la captura de la cámara al cerrar la aplicación
 
-    def applyStyles(self):
-        # --------------------------------
-        # Se configuran los estilos de los widgets con CSS
-
-        # --------------------------------
-        # Estilo para los GroupBoxes
-        gb_estilo = """ 
-            QGroupBox {
-            font-size: 12px;  
-            color: #4E342E;
-            padding: 2px;
-            border: 1px solid #D0D3D4; 
-            font-family: "Consolas";  
-            }
-            """
-
-        # --------------------------------
-        # Estilo para los Botones
-        btn_estilo = """
-            QPushButton {  
-            font-size: 12px; 
-            font-family: "Consolas";
-            font-weight: bold;  }
-            QPushButton::disabled{
-            color: #F4F6F6; 
-            background-color: #F4F6F6; 
-            border: 0px solid #424949;
-            font-size: 12px;  
-            }
-            """
-        # --------------------------------
-        # Estilo para la lista de opciones
-        list_options = """
-            QComboBox {  
-            font-size: 12px;
-            font-family: "Consolas";  } 
-            """
-
-        # --------------------------------
-        # Estilo para los Labels
-        lbl_estilo1 = """
-            QLabel
-            {
-            background-color: black; 
-            font-size: 18px;
-            color: #00FF99;
-            font-family: "Consolas";
-            font-weight: bold; 
-            border: 3px groove #212121;
-            border-radius: 5px;
-            }"""
-        # --------------------------------
-        # Estilo para los Labels
-        lbl_estilo2 = """
-            QLabel
-            {
-            background-color: #F2F4F4; 
-            font-size: 15px;
-            color:  black;
-            font-family: "Consolas";  
-            font-weight: bold; 
-            border: 0px;
-            padding: 2px;
-            border-radius: 5px;
-            }"""
-        # --------------------------------
-        # Estilo para los inputs
-        inpt_estilo = """
-            QLineEdit
-            {
-            background-color: #F2F3F4; 
-            font-size: 18px;
-            color: #1A5276;
-            font-family: "Consolas"; 
-            font-weight: bold; 
-            padding: 1px; 
-            border-left: 3px groove #515A5A;
-            }
-            
-            """
-
-        # --------------------------------
-        # Se aplican los estilos
-        self.inpt_Px.setStyleSheet(inpt_estilo)
-        self.inpt_Py.setStyleSheet(inpt_estilo)
-        self.inpt_Pz.setStyleSheet(inpt_estilo)
-        self.inpt_Pxi.setStyleSheet(inpt_estilo)
-        self.inpt_Pyi.setStyleSheet(inpt_estilo)
-        self.inpt_Pzi.setStyleSheet(inpt_estilo)
-        self.inpt_Pxf.setStyleSheet(inpt_estilo)
-        self.inpt_Pyf.setStyleSheet(inpt_estilo)
-        self.inpt_Pzf.setStyleSheet(inpt_estilo)
-        self.inpt_points_qty.setStyleSheet(inpt_estilo)
-
-        self.inpt_Px.setFixedWidth(150)
-        self.inpt_Py.setFixedWidth(150)
-        self.inpt_Pz.setFixedWidth(150)
-        self.inpt_Pxi.setFixedWidth(150)
-        self.inpt_Pyi.setFixedWidth(150)
-        self.inpt_Pzi.setFixedWidth(150)
-        self.inpt_Pxf.setFixedWidth(150)
-        self.inpt_Pyf.setFixedWidth(150)
-        self.inpt_Pzf.setFixedWidth(150)
-        self.inpt_points_qty.setFixedWidth(150)
-
-        self.inptQ1pos.setStyleSheet(inpt_estilo)
-        self.inptQ2pos.setStyleSheet(inpt_estilo)
-        self.inptQ3pos.setStyleSheet(inpt_estilo)
-
-        self.lbl_angQ1.setStyleSheet(lbl_estilo1)
-        self.lbl_angQ2.setStyleSheet(lbl_estilo1)
-        self.lbl_angQ3.setStyleSheet(lbl_estilo1)
-        self.lbl_Q1.setStyleSheet(lbl_estilo2)
-        self.lbl_Q2.setStyleSheet(lbl_estilo2)
-        self.lbl_Q3.setStyleSheet(lbl_estilo2)
-        self.lbl_Px.setStyleSheet(lbl_estilo2)
-        self.lbl_Py.setStyleSheet(lbl_estilo2)
-        self.lbl_Pz.setStyleSheet(lbl_estilo2)
-        self.lbl_Pxi.setStyleSheet(lbl_estilo2)
-        self.lbl_Pyi.setStyleSheet(lbl_estilo2)
-        self.lbl_Pzi.setStyleSheet(lbl_estilo2)
-        self.lbl_Pxf.setStyleSheet(lbl_estilo2)
-        self.lbl_Pyf.setStyleSheet(lbl_estilo2)
-        self.lbl_Pzf.setStyleSheet(lbl_estilo2)
-        self.lbl_points_qty.setStyleSheet(lbl_estilo2)
-        self.lbl_Pinicial.setStyleSheet(lbl_estilo2)
-        self.lbl_Pfinal.setStyleSheet(lbl_estilo2)
-        self.lbl_Q1value.setStyleSheet(lbl_estilo2)
-        self.lbl_Q2value.setStyleSheet(lbl_estilo2)
-        self.lbl_Q3value.setStyleSheet(lbl_estilo2)
-
-        self.lbl_angQ1.setFixedHeight(40)
-        self.lbl_angQ2.setFixedHeight(40)
-        self.lbl_angQ3.setFixedHeight(40)
-        self.lbl_Q1.setFixedHeight(20)
-        self.lbl_Q2.setFixedHeight(20)
-        self.lbl_Q3.setFixedHeight(20)
-        self.lbl_Px.setFixedHeight(20)
-        self.lbl_Py.setFixedHeight(20)
-        self.lbl_Pz.setFixedHeight(20)
-        self.lbl_Pxi.setFixedHeight(20)
-        self.lbl_Pyi.setFixedHeight(20)
-        self.lbl_Pzi.setFixedHeight(20)
-        self.lbl_Pxf.setFixedHeight(20)
-        self.lbl_Pyf.setFixedHeight(20)
-        self.lbl_Pzf.setFixedHeight(20)
-        self.lbl_points_qty.setFixedHeight(20)
-        self.lbl_Pinicial.setFixedHeight(20)
-        self.lbl_Pfinal.setFixedHeight(20)
-        self.lbl_Q1value.setFixedHeight(20)
-        self.lbl_Q2value.setFixedHeight(20)
-        self.lbl_Q3value.setFixedHeight(20)
-
-        self.combo_box_speed.setStyleSheet(list_options)
-        self.combo_box_def_position.setStyleSheet(list_options)
-        """
-        self.gb_Commands.setStyleSheet(gb_estilo)
-        self.gb_Inputs.setStyleSheet(gb_estilo)
-        self.gb_JPositions.setStyleSheet(gb_estilo)
-        self.gb_Movement.setStyleSheet(gb_estilo)
-        self.gb_speed.setStyleSheet(gb_estilo)"""
-
-        self.btnConnectCamera.setStyleSheet(btn_estilo)
-        self.btn_lineal_move.setStyleSheet(btn_estilo)
-        self.btnTakeSnapshot.setStyleSheet(btn_estilo)
-        self.btn_Move.setStyleSheet(btn_estilo)
-        self.btn_MovetoArt.setStyleSheet(btn_estilo)
-
-        self.btnConnectCamera.setFixedHeight(20)
-        self.btn_lineal_move.setFixedHeight(20)
-        self.btnTakeSnapshot.setFixedHeight(20)
-        self.btn_Move.setFixedHeight(20)
-        self.btn_MovetoArt.setFixedHeight(20)
-        self.btn_MovetoArt.setFixedWidth(100)
-
-        self.setStyleSheet("background-color:#F4F6F6;")
-
     def startVideoStream(self):
         try:
-            self.getFrame.startStream()
+            self.getFrame.startStream(self.cameraResolution, self.cameraFps)
         except Exception as error :
             print('error', error)
             return False
@@ -393,7 +301,6 @@ class UIManager(QMainWindow):
             return True
 
     def stopVideoStream(self):
-        print("stopStream")
         try:
             self.getFrame.stopStream()
         except Exception as error :
@@ -411,10 +318,8 @@ class UIManager(QMainWindow):
             on_error=lambda e: print(f"Error: {e}"),
             on_completed=lambda: print("Stream completado"),
         )
-        print("setObserverGetFrames")
 
     def changeResolution(self,index):                   # optimizar
-        print("index: ",index)
         if (index == 0):
             self.cameraResolution = Resolutions.RES_2560x800
             self.cameraFps = 8
@@ -435,8 +340,6 @@ class UIManager(QMainWindow):
             self.cameraFps = 60
 
         self.stopVideoStream()
-        print("Set camera resolution: ",self.cameraResolution)
-        getFrame.setCameraResolution( self.cameraResolution, self.cameraFps)       # TODO: deberia ser self
         self.startVideoStream()
 
     def setStatusCameraUi(self,status: CameraStatusUi):
@@ -483,6 +386,19 @@ class UIManager(QMainWindow):
             self.setStatusCameraUi(CameraStatusUi.CONNECTED)
         else:
             self.setStatusCameraUi( CameraStatusUi.ERROR)
+
+    def depthMixerChange(self,value):
+        self.labelDepthValue.setText(f"Depth mixer: {value/100.00}")
+        depthMapProcessor.changeMixDepthValue(value/100.00)
+
+    def blockSizeChange(self,value):
+        self.labelBlockSize.setText(f"Block size: {value}")
+        depthMapProcessor.changeBlockSizeValue(value)
+
+    def winSizeChange(self,value):
+        self.labelWinSize.setText(f"window size: {value}")
+        depthMapProcessor.changeWinSizeValue(value)
+
 
 # --------------------------------
 # Se ejecuta la interfaz

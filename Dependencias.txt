@@ -4,3 +4,5 @@ Dependencias:
 	- PyQt5
 	- opencv2
 	- reactivex
+	- pyvistaqt
+

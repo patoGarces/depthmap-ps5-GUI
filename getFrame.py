@@ -10,12 +10,11 @@ class GetFrame:
     # out_left = cv2.VideoWriter('left.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(1264,800))
     # out_right = cv2.VideoWriter('right.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(1264,800))
 
-    def __init__(self,vid):
+    def __init__(self):
         self.subject = Subject()
         self.flagRunning = threading.Event()
         self.flagRunning.clear()
         self.hilo_emision = None
-        self.vid = vid
         
     def getSubjectGetFrame(self):
         return self.subject
@@ -46,12 +45,12 @@ class GetFrame:
 
             self.subject.on_next((left, right))
 
-    def startStream(self, resolution, fps):
+    def startStream(self,vid_camera, resolution, fps):
         cameraIndex = -1
         contIndex = 0
         for camera_info in enumerate_cameras(cv2.CAP_MSMF): # or cv2.CAP_DSHOW
 
-            if( self.vid.lower() in camera_info.path.lower()):
+            if( vid_camera.lower() in camera_info.path.lower()):
                 cameraIndex = contIndex
                 break
             contIndex+=1

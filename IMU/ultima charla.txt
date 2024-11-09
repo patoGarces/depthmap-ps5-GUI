@@ -1,0 +1,15 @@
+Obtener respuesta al impulso por separado, uno para ACC y otro para GY y con cada uno obtener respuestas en frecuencias, se pueden sumar 2 las 2 respuestas en frecuencias
+
+
+Deberia mostrar que la parte del acelerometro deberia ser un pasabajos
+mientras el GY deberia ser un pasaaltos
+
+
+
+agregar delay como conclusion
+
+
+Agregar conclusiones relacionado al kinect
+
+agregar a tipo de informe la falta de magnetometro
+Nombrar establecer puntos de referencia en la imagen para compensar la falta de yaw

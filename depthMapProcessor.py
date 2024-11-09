@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 import time
 
+from scipy import stats
+
 class DepthMapProcessor:
     #Load camera parameters
     # ret = np.load('param_ret.npy')
@@ -27,9 +29,9 @@ class DepthMapProcessor:
 
         self.mixerDepth = 0.5
         
-        new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(self.K,self.dist,(self.w,self.h),1,(self.w,self.h))
+        self.new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(self.K,self.dist,(self.w,self.h),1,(self.w,self.h))
 
-        self.mapx, self.mapy = cv2.initUndistortRectifyMap(self.K,self.dist, None ,new_camera_matrix,(self.w, self.h),cv2.CV_16SC2)
+        self.mapx, self.mapy = cv2.initUndistortRectifyMap(self.K,self.dist, None ,self.new_camera_matrix,(self.w, self.h),cv2.CV_16SC2)
         self.setStereoSettings()
 
     def setStereoSettings(self,_blockSize = 5,_winSize = 5):
@@ -72,25 +74,71 @@ class DepthMapProcessor:
     def get_distance(d):
         return 30 * 10/d
 
-    def processFrame(self,frameL,frameR):
-        start = time.time()
+    def postProcess(self,disp_matrix):                                  # TODO: mover de aca, solo para prueba de filtrado
+
+        pp_disp = np.copy(disp_matrix)
+
+        for x in range(pp_disp.shape[1]):
+            for y in range(pp_disp.shape[0]):
+
+                # MEAN
+                avg = np.mean(pp_disp[y-7:y+8, x-7:x+8]) 
+                if np.absolute(pp_disp[y, x] - avg) > 5:
+                    pp_disp[y, x] = avg
+
+                # MODE
+                if x > 12 and x < (pp_disp.shape[0] - 12):
+                    if pp_disp[y, x] > 25:
+                        mode = stats.mode(pp_disp[y-12:y+13, x-12:x+13].flatten())
+                        pp_disp[y, x] = mode[0][0]
+
+                # THRESHOLD
+                if pp_disp[y, x] > 30:
+                    pp_disp[y, x] = 25
+
+        print(f"Post-processing for disparity matrix of shape {disp_matrix.shape} complete.")
+
+        return pp_disp
+    
+    def rectifiedFrames(self,frameL,frameR): 
         #Undistort images
-        # frameL = cv2.undistort(frameL, self.K, self.dist, None, self.new_camera_matrix)
-        # frameR = cv2.undistort(frameR, self.K, self.dist, None, self.new_camera_matrix)
-        # frameL= cv2.remap(frameL,self.mapx,self.mapy, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)  
-        # frameR= cv2.remap(frameR,self.mapx,self.mapy, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)
+        frameL = cv2.undistort(frameL, self.K, self.dist, None, self.new_camera_matrix)
+        frameR = cv2.undistort(frameR, self.K, self.dist, None, self.new_camera_matrix)
+        frameL= cv2.remap(frameL,self.mapx,self.mapy, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)  
+        frameR= cv2.remap(frameR,self.mapx,self.mapy, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)
 
-        #downsample image for higher speed
-        frameL_downsampled = cv2.pyrDown(cv2.cvtColor(frameL, cv2.COLOR_BGR2GRAY))
-        frameR_downsampled = cv2.pyrDown(cv2.cvtColor(frameR, cv2.COLOR_BGR2GRAY))
+        return frameL, frameR
+    
+    def downsampledFrames(self,frameL,frameR):
+        # downsample image for higher speed
+        frameL_downsampled = cv2.pyrDown(frameL)
+        frameR_downsampled = cv2.pyrDown(frameR)
 
-        # img_1_downsampled = cv2.cvtColor(frameL, cv2.COLOR_BGR2GRAY)
-        # img_2_downsampled = cv2.cvtColor(frameR, cv2.COLOR_BGR2GRAY)
+        return frameL_downsampled,frameR_downsampled
+    
+    def getHorizontalStripe(self,frameL,frameR):
+        # Corte para una sola franja:
 
-        new_w, new_h = frameL_downsampled.shape
+        print('getHorizontalStripe: ' + str(np.shape(frameL)))
+        height, width, _  = frameL.shape
+        y_start = int(height / 2) - 10  # Comienza 10 píxeles por encima del centro
+        y_end = y_start + 20  # Toma 20 píxeles de alto
+        frameLCut = frameL[y_start:y_end, :]
+        frameRCut =  frameR[y_start:y_end, :]
+
+        return frameLCut,frameRCut
+
+
+    def getStereoDepthmap(self,frameL,frameR):
+        start = time.time()
+        
+        frameLGray = cv2.cvtColor(frameL, cv2.COLOR_BGR2GRAY)
+        frameRGray = cv2.cvtColor(frameR, cv2.COLOR_BGR2GRAY)
+
+        frameRgbL = frameL
 
         #compute stereo
-        disp = self.stereo.compute(frameL_downsampled,frameR_downsampled)
+        disp = self.stereo.compute(frameLGray,frameRGray)
         
         #denoise step 1
         denoised = ((disp.astype(np.float32)/ 16)- self.min_disp)/ self.num_disp
@@ -101,41 +149,34 @@ class DepthMapProcessor:
         denoised= cv2.morphologyEx(dispC,cv2.MORPH_CLOSE,  self.kernel)
         
         #apply color map
-        disp_Color= cv2.applyColorMap(denoised,cv2.COLORMAP_JET)#cv2.COLORMAP_OCEAN)
+        disp_color= cv2.applyColorMap(denoised,cv2.COLORMAP_JET)#cv2.COLORMAP_OCEAN)
         
+        new_h,new_w = frameLGray.shape
+
         f = 0.3*self.w                          # 30cm focal length
         Q = np.float32([[1, 0, 0, -0.5*new_w],
                         [0,-1, 0,  0.5*new_h],  # turn points 180 deg around x-axis,
-                        [0, 0, 0,      f],      # so that y-axis looks up
+                        [0, 0, 0,      -f],      # so that y-axis looks up
                         [0, 0, 1,      0]])
+        
+        # Qy = np.float32([   [1, 0, 0, 0],
+        #                     [0, -1, 0, 0],  # turn points 180 deg around x-axis,
+        #                     [0, 0, 1, 0],      # so that y-axis looks up
+        #                     [0, 0, 0, 1]])
+        
+        # Q = np.dot(Q,Qy)
+        
         points = cv2.reprojectImageTo3D(disp, Q)
+        # points = cv2.reprojectImageTo3D(denoised, Q)
 
-        # z_values = points[:,:,2]
-        # z_values = z_values.flatten()
-        # indices = z_values.argsort()
-
-        # precentage = 25280
-        # min_distance = np.mean(np.take(z_values,indices[0:precentage]))                             # takes the 30% lowest measuerements and gets the average distance from these.
-        # avg_distance = np.mean(z_values)                                                           # averages all distances
-        # max_distance = np.mean(np.take(z_values,indices[z_values.shape[0]-precentage:z_values.shape[0]])) # takes the 30% highest measuerements and gets the average distance from these.
-        #print(np.take(z_values,indices[z_values.shape[0]-precentage:z_values.shape[0]]))
-        #print(np.take(z_values,indices[:-100]))
-
-        #visualize
-        # cv2.imshow("Depth", disp_Color)
-        frameR = cv2.resize(frameR,(632, 400))
-        color_depth = cv2.addWeighted(frameR,1-self.mixerDepth,disp_Color,self.mixerDepth,0)
+        color_depth = cv2.addWeighted(frameRgbL,1-self.mixerDepth,disp_color,self.mixerDepth,0)
 
         end = time.time()
         fps = 1 / (end-start)
 
-        # cv2.putText(color_depth, "minimum: " + str(round(min_distance,1)),(5, 20),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255),2,cv2.LINE_AA)
-        # cv2.putText(color_depth, "average: " + str(round(avg_distance,1)),(5, 40),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255),2,cv2.LINE_AA)
-        # cv2.putText(color_depth, "maximum: " + str(round(max_distance,1)),(5, 60),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255),2,cv2.LINE_AA)
         cv2.putText(color_depth, "FPS: " + str(round(fps)),(5, 80),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255),2,cv2.LINE_AA)
 
-        # cv2.imshow("color & Depth", color_depth)
-        return disp_Color,color_depth,points
+        return color_depth,points,disp,disp_color,denoised
 
 # ret = np.load('DepthParams/param_ret.npy')
 # K = np.load('DepthParams/param_K.npy')

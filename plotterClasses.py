@@ -1,93 +1,125 @@
-import numpy as np
 import matplotlib.pyplot as plt
-import cv2
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from PyQt5.QtWidgets import *
 
-class DrawOutput3D():
-    
-    def __init__(self) -> None:
-        self.fig2 = plt.figure(figsize=(7,7))
-        self.ax_3d = self.fig2.add_subplot(111, projection='3d')
-        self.ax_3d.set_title("Nube de puntos 3d")
-        self.ax_3d.set_zlabel('Distancia[MM]')    
+import pyvista as pv
+from PyQt5.QtWidgets import QWidget, QVBoxLayout
+from pyvistaqt import QtInteractor
+import numpy as np
+from PyQt5.QtCore import pyqtSignal, QObject
 
-        self.ax_3d.view_init(elev=-58., azim=-134.,roll = 45.)                                        
 
-        self.grafico1 = self.ax_3d.scatter(0,0)
+class Communicator(QObject):
+    update_cloud = pyqtSignal(np.ndarray, np.ndarray)  # Señal para actualizar la nube de puntos
+
+# class DrawOutput3D(QWidget):
+#     def __init__(self):
+#         super().__init__()
+
+#         self.figure = plt.figure()
+#         self.canvas = FigureCanvas(self.figure)
+#         self.layout = QVBoxLayout()
+#         self.layout.addWidget(self.canvas)
+#         self.setLayout(self.layout)
+
+#     def updatePointCloud(self, points, colors):
+
+#         self.figure.clear()
+#         ax = self.figure.add_subplot(111, projection='3d')
+
+#         # ax.view_init(elev=45, azim=-45)
         
-    def updatePointCloud(self,frameDepth,frameRgb):
-        # frameBGR = cv2.cvtColor(frameRgb,cv2.COLOR_RGB2BGR)                         # Necesito los colores en formato BGR
-        # color3d = frameBGR[:480][:640]                                               # Necesito una linea horizontal del frame, tomo una a la altura de X                                              
-        # colorBGR= color3d/255                                                     # Para plotear el punto, el color debe estar normalizado como un float entre 0 y 1,EJEMPLO:[0,127,255] -> [0,0.5,1.00]
-        # mapDepth = frameDepth[:480][:640]
-
-        (width, height, b) = np.shape(frameRgb)
-        paso = 10
-        (X, Y) = np.meshgrid(range(0, height, paso), range(0,width, paso))
-
-        self.grafico1.remove()
-        self.grafico1 = self.ax_3d.scatter(X, Y, frameDepth[Y,X])#,c = colores)
-
-class DrawOutput2D():
-    
-    def __init__(self) -> None:
-
-        # Subplots 2d plot y radar
-        self.fig1, (self.ax_plot, self.ax_radar) = plt.subplots(nrows=2,layout="constrained")
-
-        # Subplot plot
-        self.ax_plot.set_title('Grafico plot')
-        self.ax_plot.set_ylabel('Distancia[mm]')
-        self.plots1, = self.ax_plot.plot(0,0)
-        self.ax_plot.grid()
-        # Subplot radar
-        self.ax_radar.set_title('Grafico radar')
-        self.ax_radar.set_ylabel('Distancia[mm]')
-        self.plots2, = self.ax_radar.plot(0,0)
-        self.ax_radar.grid()
+#         # Actualiza la nube de puntos
+#         ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=1, c=colors / 255.0 )#, c ='g')
+#         ax.set_title("Nube de puntos 3D")
+#         ax.set_xlabel("X")
+#         ax.set_ylabel("Y")
+#         ax.set_zlabel("Z")
         
-        # # Subplots roll y pitch
-        # self.fig2, (self.ax_roll, self.ax_pitch) = plt.subplots(nrows=2,layout="constrained")
-        
-        # # Subplot pitch
-        # self.ax_pitch.set_title('Angulo pitch')
-        # self.ax_pitch.set_ylabel('Grados')
-        # self.ax_pitch.set_xlabel('Frame')
-        # self.ax_pitch.set_ylim(-100,100)
-        # self.ax_pitch.grid()
-        # self.plotsPitch, = self.ax_pitch.plot(0,0)
+#         lim_min, lim_max = -3,3
+#         ax.set_xlim([lim_min,lim_max])
+#         ax.set_ylim([lim_min,lim_max])
+#         ax.set_zlim([lim_min,lim_max])
 
-        # # Subplot roll
-        # self.ax_roll.set_title('Angulo roll')
-        # self.ax_roll.set_ylabel('Grados')
-        # self.ax_roll.set_xlabel('Frame')
-        # self.ax_roll.set_ylim(-100,100)
-        # self.ax_roll.grid()
-        # self.plotsRoll, = self.ax_roll.plot(0,0)
-    
-    def addSubplot(self,data):                                        
-        self.plots1.remove()                                                        # Limpio solamente los puntos realizados anteriormente,es mas performante
-        self.plots1 = self.ax_plot.stem(data,linefmt='--',markerfmt=",")
+#         self.canvas.draw()
 
-    def updateRadar(self,frameDepth,frameRgb,X):
-        
-        frameBGR = cv2.cvtColor(frameRgb,cv2.COLOR_RGB2BGR)                         # Necesito los colores en formato BGR
-        colorLine = frameBGR[X][:640]                                               # Necesito una linea horizontal del frame, tomo una a la altura de X                                              
-        colorBGR= colorLine/255                                                     # Para plotear el punto, el color debe estar normalizado como un float entre 0 y 1,EJEMPLO:[0,127,255] -> [0,0.5,1.00]
+class DrawOutput3D(QWidget):
+    def __init__(self, communicator):
+        super().__init__()
 
-        mapDepth = frameDepth[X][:640]
-        x = np.arange(0,640,1)                                                      # El ancho de la imagen a iterar
+        self.communicator = communicator
+        self.communicator.update_cloud.connect(self.updatePointCloud)  # Conecto la señal para actualizar la nube de puntos
 
-        self.plots2.remove()                                                        # Limpio solamente los puntos realizados anteriormente,es mas performante
-        self.plots2 = self.ax_radar.scatter(x,mapDepth,s=1,c=colorBGR)              # Dibujo cada punto con maxDepth en el eje Y del grafico,tamaño 1 y con su respectivo color
-        return
+        # Creo el renderizador de PyVista usando QtInteractor
+        self.plotter = QtInteractor(self)
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.plotter)
+        self.setLayout(self.layout)
 
-    # def addAccPlot(self,roll,pitch,n):
-    #     # self.plotsRoll.remove()                                                        # Limpio solamente los puntos realizados anteriormente,es mas performante
-    #     # self.plotsPitch.remove()
-    #     self.plotsRoll = self.ax_roll.stem(n,roll)
-    #     self.plotsPitch = self.ax_pitch.stem(n,pitch)
+        self.plotter.set_background('white')  # Establece el color de fondo
+        self.plotter.add_axes()  # Agrega ejes para la referencia
 
-    def showPlot(self):
-        # plt.ion()
-        plt.show()
-        plt.pause(0.0001)
+    def updatePointCloud(self, points, colors):
+        # Limpio el renderizador
+        self.plotter.clear()
+
+        # Creo una nube de puntos
+        point_cloud = pv.PolyData(points)
+
+        # Normalizar colores a [0, 1]
+        normalized_colors = colors / 255.0
+        point_cloud.point_data['Colors'] = normalized_colors
+
+        # Agrego la nube de puntos al renderizador
+        self.plotter.add_mesh(point_cloud, scalars='Colors', render_points_as_spheres=True, point_size=5)
+
+        # self.plotter.reset_camera()
+        self.plotter.update()
+
+class DrawOutput2D(QWidget):
+
+    def __init__(self):
+        super().__init__()
+
+        self.layout = QVBoxLayout(self)
+
+        # Creo una instancia de FigureCanvas
+        self.canvas = FigureCanvas(Figure(figsize=(5, 3)))
+        self.layout.addWidget(self.canvas)
+
+        # Inicializo el gráfico
+        self.ax = self.canvas.figure.add_subplot(111)
+        self.scatter = None  # Inicializar como None para usarlo en updatePlot
+        self.ax.grid(True)
+        self.ax.set_title('Nube de puntos en el plano X-Z')
+        self.ax.set_xlabel('X')
+        self.ax.set_ylabel('Z')
+        # self.ax.legend(loc='lower left')
+
+
+    def updatePlot(self,points,colors):
+        # Limpio el gráfico anterior
+        self.ax.clear()
+        self.ax.grid(True)
+        self.ax.set_title('Nube de puntos en el plano X-Z')
+        self.ax.set_xlabel('X')
+        self.ax.set_ylabel('Z')
+
+        xCoord = points[:,0]
+        yCoord = points[:,2]
+
+        # Creo el gráfico de dispersión con los datos de los puntos
+        self.scatter = self.ax.scatter(xCoord, yCoord,s=1, c='b') # c=colors / 255.0)#)
+
+        # Ajusto los límites si es necesario
+        # self.ax.set_xlim([x_coords.min(), x_coords.max()])
+        # self.ax.set_ylim([z_coords.min(), z_coords.max()])
+
+        lim_min, lim_max = -3,3
+        self.ax.set_xlim([lim_min,lim_max])
+        self.ax.set_ylim([lim_min,lim_max])
+        # self.ax.set_xlim([-3,3])
+        # self.ax.set_ylim([0, 5])
+        # Actualizar el lienzo del gráfico
+        self.canvas.draw()

@@ -5,18 +5,18 @@ from PyQt5.QtWidgets import *
 from PyQt5.Qt import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import Qt
 
 import sys
 import numpy as np
 import logging
-import time
 import cv2
-from matplotlib import pyplot as plt
 
-from reactivex import create
+from stl import mesh
+from scipy.spatial import Delaunay
+
+# from reactivex import create
 from reactivex import operators as ops
-
 
 from Utils.utils import CameraStatusUi
 from controlCamera import ControlCamera 
@@ -26,36 +26,46 @@ from getFrame import Resolutions
 from depthMapProcessor import DepthMapProcessor
 from plotterClasses import DrawOutput2D
 from plotterClasses import DrawOutput3D
+from SerialManager import SerialManager
 
-# --------------------------------
+from plotterClasses import Communicator
+
+VID_CAMERA = 'VID_05A9'
+
 # Creamos la Clase de la Interfaz
-
-
 class UIManager(QMainWindow):
 
     statusCameraUi = 0
     cameraResolution = Resolutions.RES_2560x800
     cameraFps = 8
 
-    def __init__(self,_controlCamera,_getFrame,_depthMapProcessor):
+    def __init__(self,_depthMapProcessor):
         # --------------------------------
         # Esta línea es importante para que funcione el programa
         QMainWindow.__init__(self)
         super(QMainWindow, self).__init__(parent=None)
 
-        self.controlCamera = _controlCamera
-        self.getFrame = _getFrame
+        self.controlCamera = ControlCamera()
+        self.getFrame =  GetFrame()
+        self.controlCamera = ControlCamera()
+        self.drawer2DWidget = DrawOutput2D()
+
+        self.communicator = Communicator()  # Crear la instancia de Communicator
+        self.drawer3DWidget = DrawOutput3D(self.communicator)
+        # self.drawer3DWidget = DrawOutput3D()
         self.depthMapProcessor = _depthMapProcessor
+        self.serialManager = SerialManager()
+
+        self.cameraPose = (0.00,0.00,0.00,True)
+        self.zFilterHeight = 0
+        self.zFilterThickness = 0.5
+        self.depthFilter = 2.5
+
         # --------------------------------
+        self.setWindowTitle("Ps5 Camera GUI")
         # Propiedades de la ventana
         # self.setFixedHeight(650)
         # self.setFixedWidth(800)
-        self.setWindowTitle("Ps5 Camera GUI")
-        self.controlCamera = ControlCamera()
-        self.getFrame = _getFrame
-        # self.drawOutput2D = DrawOutput2D()
-        # self.drawOutput3D = DrawOutput3D()
-
         self.setGrid()
         self.setMenuControlPanel()
         self.setVideoCameraView()
@@ -63,6 +73,8 @@ class UIManager(QMainWindow):
 
         self.updateCameraStatus()
         self.setObserverGetFrames()
+
+        self.adjustSize()
 
     def setGrid(self):
         # --------------------------------
@@ -109,11 +121,75 @@ class UIManager(QMainWindow):
             "3448x808 30fps",
             "3448x808 60fps",
         ]
-
         self.comboResolution.addItems(resolutions)
         self.comboResolution.currentIndexChanged.connect(self.changeResolution)
         self.comboResolution.setEnabled(False)
         videoControlLayout.addWidget(self.comboResolution)
+
+        self.labelStatusTitle = QLabel(parent=self.gb_videoControl)
+        self.labelStatusTitle.setText("Conexion serial:")
+        self.labelStatusTitle.setAlignment(Qt.AlignLeft)
+        videoControlLayout.addWidget(self.labelStatusTitle)
+
+        # Combo box para seleccionar el puerto serial
+        self.comboCommSerial = QComboBox()
+        self.comboCommSerial.currentIndexChanged.connect(self.connectSerial)
+        self.comboCommSerial.showPopup = self.updateSerialComms
+        self.comboCommSerial.setEnabled(True)
+        videoControlLayout.addWidget(self.comboCommSerial)
+
+        self.labelStatusSerial = QLabel(parent=self.gb_videoControl)
+        self.labelStatusSerial.setText("Desconectado")
+        self.labelStatusSerial.setAlignment(Qt.AlignCenter)
+        videoControlLayout.addWidget(self.labelStatusSerial)
+
+        # Cuadro de control de pointcloud
+        pointCloudControlLayout = QVBoxLayout()
+        pointCloudControlLayout.setSpacing(10)
+        pointCloudControlLayout.setAlignment(Qt.AlignTop)
+
+        self.gb_pointCloudControl = QGroupBox("Control de DepthMap", parent=self)
+        self.gb_pointCloudControl.setLayout(pointCloudControlLayout)
+        self.gb_pointCloudControl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+
+        self.labelZFilterHeight = QLabel(f"Z filter height: {self.zFilterHeight}", self)
+
+        self.sliderZFilterHeight = QSlider(Qt.Horizontal)
+        self.sliderZFilterHeight.setMinimum(-250)
+        self.sliderZFilterHeight.setMaximum(250)
+        self.sliderZFilterHeight.setValue(int(self.zFilterHeight*100))
+        self.sliderZFilterHeight.setTickPosition(QSlider.TicksBelow)
+        self.sliderZFilterHeight.setTickInterval(10)
+        self.sliderZFilterHeight.valueChanged.connect(self.zFilterHeightChange)
+        
+        pointCloudControlLayout.addWidget(self.labelZFilterHeight)
+        pointCloudControlLayout.addWidget(self.sliderZFilterHeight)
+
+        self.labelZFilterThickness = QLabel(f"Z filter thickness: {self.zFilterThickness}", self)
+
+        self.sliderZFilterThickness = QSlider(Qt.Horizontal)
+        self.sliderZFilterThickness.setMinimum(1)
+        self.sliderZFilterThickness.setMaximum(100)
+        self.sliderZFilterThickness.setValue(int(self.zFilterThickness*100))
+        self.sliderZFilterThickness.setTickPosition(QSlider.TicksBelow)
+        self.sliderZFilterThickness.setTickInterval(10)
+        self.sliderZFilterThickness.valueChanged.connect(self.zFilterThicknessChange)
+        
+        pointCloudControlLayout.addWidget(self.labelZFilterThickness)
+        pointCloudControlLayout.addWidget(self.sliderZFilterThickness)
+
+        self.labelDepthFilter = QLabel(f"Depth filter: {self.depthFilter}", self)
+
+        self.sliderDepthFilter = QSlider(Qt.Horizontal)
+        self.sliderDepthFilter.setMinimum(1)
+        self.sliderDepthFilter.setMaximum(300)
+        self.sliderDepthFilter.setValue(int(self.depthFilter*100))
+        self.sliderDepthFilter.setTickPosition(QSlider.TicksBelow)
+        self.sliderDepthFilter.setTickInterval(10)
+        self.sliderDepthFilter.valueChanged.connect(self.depthFilterChange)
+        
+        pointCloudControlLayout.addWidget(self.labelDepthFilter)
+        pointCloudControlLayout.addWidget(self.sliderDepthFilter)
 
         # Cuadro de control de DepthMap abajo
         depthControlLayout = QVBoxLayout()
@@ -168,6 +244,7 @@ class UIManager(QMainWindow):
 
         # Agregar ambos grupos de controles al QVBoxLayout principal
         controlLayout.addWidget(self.gb_videoControl, alignment=Qt.AlignTop)
+        controlLayout.addWidget(self.gb_pointCloudControl, alignment=Qt.AlignTop)
         controlLayout.addWidget(self.gb_depthControl, alignment=Qt.AlignTop)
 
         # Agregar el QVBoxLayout al GridLayout
@@ -204,6 +281,15 @@ class UIManager(QMainWindow):
         self.videoLayout.addWidget(self.video_labelL, 0, 0, 1, 1)
         self.videoLayout.addWidget(self.video_labelR, 0, 1, 1, 1)
         self.videoLayout.addWidget(self.video_labelDepthMap, 1, 0, 1, 2)
+        
+        # drawer 2D
+        self.drawer2DWidget.setMinimumSize(400, 300)
+        self.videoLayout.addWidget(self.drawer2DWidget, 2, 0, 1, 2)
+
+        # drawer 3D
+        self.drawer3DWidget.setMinimumSize(800, 800)
+        self.videoLayout.addWidget(self.drawer3DWidget, 0, 2, 3, 3)
+
         self.setLayout(self.videoLayout)
 
     def applyStyles(self):
@@ -257,6 +343,9 @@ class UIManager(QMainWindow):
         self.sliderMixerDepth.setStyleSheet(styleSliders)
         self.sliderBlockSize.setStyleSheet(styleSliders)
         self.sliderWinSize.setStyleSheet(styleSliders)
+        self.sliderDepthFilter.setStyleSheet(styleSliders)
+        self.sliderZFilterHeight.setStyleSheet(styleSliders)
+        self.sliderZFilterThickness.setStyleSheet(styleSliders)
 
         lbl_statusStyle = """
             QLabel
@@ -274,63 +363,122 @@ class UIManager(QMainWindow):
         self.labelStatus.setStyleSheet(lbl_statusStyle)
   
     def updateFrames(self,frames):
-        frameR,frameL = frames
 
-        frame = cv2.cvtColor(frameL, cv2.COLOR_BGR2RGB)                            # Convertir el fotograma a RGB
+        frameR,frameL = frames
+        # frameL, frameR = self.depthMapProcessor.rectifiedFrames(frameL,frameR)
+        undisFrameL, undisFrameR = self.depthMapProcessor.downsampledFrames(frameL,frameR)
+        # undisFrameL, undisFrameR = self.depthMapProcessor.getHorizontalStripe(frameL,frameR)
+        
+        depthMapColor,points,disp,disp_color,depthMap = self.depthMapProcessor.getStereoDepthmap(undisFrameL,undisFrameR)
+
+        frame = cv2.cvtColor(undisFrameL, cv2.COLOR_BGR2RGB)                       # Convertir el fotograma a RGB
         self.video_labelL.setPixmap(self.convertFrameToQt(frame))                  # Mostrar el fotograma en el QLabel
 
-        frame = cv2.cvtColor(frameR, cv2.COLOR_BGR2RGB)                            # Convertir el fotograma a RGB
+        frame = cv2.cvtColor(undisFrameR, cv2.COLOR_BGR2RGB)                       # Convertir el fotograma a RGB
         self.video_labelR.setPixmap(self.convertFrameToQt(frame))                  # Mostrar el fotograma en el QLabel
-
-        depthMap,depthMapColor,points = self.depthMapProcessor.processFrame(frameL,frameR)
-
-        # self.updatePlot(points,200)       # TODO: revisar
-
-        frame = depthMapColor
         frame = cv2.cvtColor(depthMapColor, cv2.COLOR_BGR2RGB)                     # Convertir el fotograma a RGB
-        self.video_labelDepthMap.setPixmap(self.convertFrameToQt(frame,self.video_labelDepthMap.width(),self.video_labelDepthMap.height()))           # Mostrar el fotograma en el QLabel
- 
-    def initPlot(self):
 
-        try:
-            self.fig, self.ax = plt.subplots(figsize=(8, 6))
-            self.ax.set_xlim([-3, 3])
-            self.ax.set_ylim([0, 3])
+        frameWithLine = cv2.line(frame, (0, int(frame.shape[0]/2)), (frame.shape[1], int(frame.shape[0]/2)), (255, 255, 255), 1)
+        self.video_labelDepthMap.setPixmap(self.convertFrameToQt(frameWithLine,self.video_labelDepthMap.width(),self.video_labelDepthMap.height()))           # Mostrar el fotograma en el QLabel
 
-            # Configuración inicial del gráfico
-            self.line, = self.ax.plot([], [], label='Average Line')
-            self.ax.set_xlabel('X')
-            self.ax.set_ylabel('Z')
-            self.ax.set_title('Promedio 2D alrededor de una Altura Específica')
-            self.ax.legend(loc='lower left')
-            self.lastNframes = []
-        except Exception as error:
-            print("Error: ",error)
+        # z_max = -2.3
+        z_max = -self.depthFilter               # TODO: remover el '-' cuando este bien ubicada la nube de puntos espacialmente
+        mask = (points[:, :, 2] >= z_max)
+        points = points[mask]
+
+        num_points = points.shape[0]  # Solo usamos el primer eje
+
+        # Concatenamos los puntos homogéneos
+        points_homogeneous = np.concatenate((points, np.ones((num_points, 1))), axis=1)
+
+        # Rotación de la nube de puntos
+        yaw = np.radians(self.cameraPose[2])
+        Qyaw = np.float32([[np.cos(yaw)     , 0 , np.sin(yaw)   , 0],
+                            [0              , 1 , 0             , 0],
+                            [-np.sin(yaw)   , 0 , np.cos(yaw)   , 0],
+                            [0              , 0 , 0             , 1]])
         
+        pitch = np.radians(self.cameraPose[0])
+        Qpitch = np.float32([[  1     , 0               , 0                 , 0],
+                            [   0     , np.cos(pitch)   , -np.sin(pitch)    , 0],
+                            [   0     , np.sin(pitch)   , np.cos(pitch)     , 0],
+                            [   0     , 0               , 0                 , 1]])
 
-    def updatePlot(self, points, height):
-        # Selecciona las filas alrededor de la altura deseada
-        start_height = max(0, height - 5)
-        end_height = min(points.shape[0] - 1, height + 5)
-        lines_around = points[start_height:end_height + 1, :, :]
+        roll = np.radians(self.cameraPose[1])
 
-        # Agrega el frame actual a last_three_frames y mantiene solo los últimos 3 frames
-        self.lastNframes.append(lines_around)
-        if len(self.lastNframes) > 1:
-            self.lastNframes.pop(0)
+        # Multiplico por la matriz de rotación
+        rotated_points = np.dot(points_homogeneous, Qyaw.T)
+        rotated_points = np.dot(rotated_points, Qpitch.T)
 
-        # Calcula el promedio a lo largo del ancho utilizando los últimos 3 frames
-        average_line_over_frames = np.mean(np.array(self.lastNframes), axis=(0, 1))
+        rotated_points = rotated_points[:, :3]          # Elimino la cuarta columna
 
-        # Actualiza los datos del gráfico con la línea suavizada
-        self.line.set_xdata(average_line_over_frames[:, 0])
-        self.line.set_ydata(average_line_over_frames[:, 2])
+        # print('size points: ' + str(np.size(points)) + 'disp max: ' +str(disp.max()))
+        # mask = (disp > 0) & (disp < 255)     # Descarto puntos invalidos
+        # points = points[mask]
+        # print('size points mask: ' + str(np.size(points)))
 
-        # Activa la cuadrícula solo para la línea
-        self.line.axes.grid(True)
+        out_colors = cv2.cvtColor(disp_color, cv2.COLOR_BGR2RGB)[mask]
 
-        # Actualiza la visualización
-        plt.pause(0.1)  # Añade una pausa para visualizar los cambios
+        rotated_points = rotated_points.reshape(-1, 3)         # Aplano a (800*1264, 3)
+
+        self.drawer2DWidget.updatePlot(rotated_points,out_colors)
+
+        y_min = self.zFilterHeight - self.zFilterThickness
+        y_max = self.zFilterHeight + self.zFilterThickness    
+
+        index_filter = (rotated_points[:, 1] >= y_min) & (rotated_points[:, 1] <= y_max)
+        # Filtro los puntos que cumplen la condicion
+        rotated_points = rotated_points[index_filter]
+        out_colors = out_colors[index_filter]
+
+        self.communicator.update_cloud.emit(rotated_points, out_colors)  # Emitir la señal
+
+        self.write_ply('point_cloud.ply', rotated_points, out_colors)
+        # self.write_stl_with_delaunay('point_cloud.stl',rotated_points)
+
+    def write_stl_with_delaunay(self,filename, points):
+        # Realiza la triangulación de Delaunay en 3D
+        delaunay = Delaunay(points)
+        
+        # Obtiene los triángulos de la malla generada por Delaunay
+        triangles = delaunay.simplices
+
+        # Crea la estructura de datos STL para almacenar los triángulos
+        stl_data = np.zeros(len(triangles), dtype=mesh.Mesh.dtype)
+
+        # Asigna los triángulos a la estructura STL
+        for i, tri in enumerate(triangles):
+            stl_data['vectors'][i] = points[tri]
+
+        # Guarda la malla en un archivo STL
+        point_cloud_mesh = mesh.Mesh(stl_data)
+        point_cloud_mesh.save(filename)
+        print(f"Archivo STL con superficie guardado en: {filename}")
+
+    def write_stl(self,filename, points):
+        # Crea una malla con un triángulo por punto
+        # (No es ideal para una nube de puntos sin superficie, pero sirve para visualización básica)
+        stl_data = np.zeros(len(points), dtype=mesh.Mesh.dtype)
+        
+        # Recorre cada punto y lo agrega como un triángulo mínimo
+        for i, point in enumerate(points):
+            stl_data['vectors'][i] = np.array([point, point, point])  # Triángulo "degradado"
+
+        # Guarda la malla en un archivo STL
+        cloud_mesh = mesh.Mesh(stl_data)
+        cloud_mesh.save(filename)
+        print(f"Nube de puntos guardada en: {filename}")
+
+    # Genera el archivo PLY
+    def write_ply(self,filename, points, colors):
+        with open(filename, 'w') as f:
+            f.write(f"ply\nformat ascii 1.0\n")
+            f.write(f"element vertex {len(points)}\n")
+            f.write("property float x\nproperty float y\nproperty float z\n")
+            f.write("property uchar red\nproperty uchar green\nproperty uchar blue\n")
+            f.write("end_header\n")
+            for p, c in zip(points, colors):
+                f.write(f"{p[0]} {p[1]} {p[2]} {c[0]} {c[1]} {c[2]}\n")
 
     def convertFrameToQt(self,frame,scaledWidth = 300, scaledHeight = 240):
         h, w, ch = frame.shape
@@ -345,9 +493,8 @@ class UIManager(QMainWindow):
         self.video_capture.release()  # Liberar la captura de la cámara al cerrar la aplicación
 
     def startVideoStream(self):
-        # self.initPlot()
         try:
-            self.getFrame.startStream(self.cameraResolution, self.cameraFps)
+            self.getFrame.startStream(VID_CAMERA,self.cameraResolution, self.cameraFps)
         except Exception as error :
             print('error', error)
             return False
@@ -453,23 +600,51 @@ class UIManager(QMainWindow):
         self.labelWinSize.setText(f"window size: {value}")
         depthMapProcessor.changeWinSizeValue(value)
 
+    def zFilterHeightChange(self,value):
+        self.labelZFilterHeight.setText(f"Z filter height: {value/100}")
+        self.zFilterHeight = value/100                
+    
+    def zFilterThicknessChange(self,value):
+        self.labelZFilterThickness.setText(f"Z filter thickness: {value/100}")
+        self.zFilterThickness = value/100
 
-# --------------------------------
-# Se ejecuta la interfaz
+    def depthFilterChange(self,value):
+        self.labelDepthFilter.setText(f"Depth filter: {value/100}")
+        self.depthFilter = value /100
+
+    def updateSerialComms(self):
+        self.listCommSerial = self.serialManager.getSerialComms()
+        if (len(self.listCommSerial) == 0):
+            self.comboCommSerial.clear()
+        else:
+            self.comboCommSerial.addItems(self.listCommSerial)
+
+    def connectSerial(self,index):
+        if (self.serialManager.connect(self.listCommSerial[index],115200,w.onNewPose)):
+            self.labelStatusSerial.setText("Conectado")
+        else:
+            self.labelStatusSerial.setText("Desconectado")
+
+    # Callback que se llama desde Serial.Manager
+    def onNewPose(self, pose, error):
+        if (error == False):
+            self.cameraPose = pose
+        else:
+            self.labelStatusSerial.setText("Desconectado")
+            self.comboCommSerial.clear()
 
 if __name__ == "__main__":
     App = QApplication(sys.argv)
     App.setStyle("Fusion")
-
-    controlCamera = ControlCamera()
-    getFrame = GetFrame('VID_05A9')
 
     npRet = np.load('DepthParams/param_ret.npy')
     npK = np.load('DepthParams/param_K.npy')
     npDist = np.load('DepthParams/param_dist.npy')
     depthMapProcessor = DepthMapProcessor(npRet,npK,npDist)
 
-    w = UIManager(controlCamera,getFrame,depthMapProcessor)
+    # logging.basicConfig(level=logging.DEBUG)
+
+    w = UIManager(depthMapProcessor)
 
     w.show()
 

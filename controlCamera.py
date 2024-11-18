@@ -1,5 +1,4 @@
-import subprocess, sys
-from subprocess import Popen, PIPE
+import subprocess
 import win32com.client
 from enum import Enum
 
@@ -9,7 +8,8 @@ class ControlCamera():
 
     def loadFirmwareCamera(self):
 
-        pathLoader = "C:/Users/Patri/Downloads/ps5_camera/PS5_camera_files-main/OrbisEyeCameraFirmwareLoader.exe"
+        #pathLoader = "C:/Users/Patri/Downloads/ps5_camera/PS5_camera_files-main/OrbisEyeCameraFirmwareLoader.exe"
+        pathLoader = "FirmwareLoader/PS5_camera_files-main/OrbisEyeCameraFirmwareLoader.exe"
 
         result = str(subprocess.check_output(pathLoader))
         

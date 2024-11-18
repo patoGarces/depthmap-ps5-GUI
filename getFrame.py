@@ -69,7 +69,10 @@ class GetFrame:
             # self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 808)
             # self.cap.set(cv2.CAP_PROP_FPS, 8)
             try:
-                if (resolution == Resolutions.RES_2560x800):   
+                if (resolution == Resolutions.RES_640x480):
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)        
+                elif (resolution == Resolutions.RES_2560x800):   
                     self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 2560)
                     self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
                 elif (resolution == Resolutions.RES_3448x808):
@@ -103,3 +106,4 @@ class GetFrame:
 class Resolutions(Enum):          # TODO: implementar
     RES_3448x808 = 0
     RES_2560x800 = 1
+    RES_640x480 = 2

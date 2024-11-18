@@ -1,0 +1,42 @@
+Primero instalar pyqt5: 
+- sudo apt update
+- sudo apt install python3-pyqt5
+- sudo apt install qtbase5-dev qttools5-dev-tools pyqt5-dev-tools
+
+Instalar opencv:
+- pip install opencv-python
+- pip install cv2_enumerate_cameras
+
+Instalar stl:
+- pip install numpy-stl
+
+Instalar scipy:
+- pip install scipy
+
+Instalar reactivex:
+- pip install reactivex
+
+Instalar matplotlib
+- pip install matplotlib
+
+Instalar pyvista:
+- pip install pyvista[all]
+
+Entorno virtual:
+- sudo apt update
+- sudo apt install python3-venv
+
+En la carpeta que queremos crear el entorno virtual: 
+- python3 -m venv myenv --system-site-packages
+
+
+Activar realVNC:
+- sudo raspi-config
+- Ir a la opción Interfacing Options.
+- Seleccionar VNC y luego seleccionar Yes para habilitarlo.
+- Salir de raspi-config seleccionando Finish.
+- Para ejecutar realvnc: vncserver-x11
+
+ver temperatura: 
+- watch -n 2 vcgencmd measure_temp
+

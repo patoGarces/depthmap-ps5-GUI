@@ -117,8 +117,8 @@ class DrawOutput2D(QWidget):
         # self.ax.set_ylim([z_coords.min(), z_coords.max()])
 
         lim_min, lim_max = -3,3
-        self.ax.set_xlim([lim_min,lim_max])
-        self.ax.set_ylim([lim_min,lim_max])
+        # self.ax.set_xlim([lim_min,lim_max])
+        # self.ax.set_ylim([lim_min,lim_max])
         # self.ax.set_xlim([-3,3])
         # self.ax.set_ylim([0, 5])
         # Actualizar el lienzo del gráfico

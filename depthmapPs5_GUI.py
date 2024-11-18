@@ -36,7 +36,7 @@ VID_CAMERA = 'VID_05A9'
 class UIManager(QMainWindow):
 
     statusCameraUi = 0
-    cameraResolution = Resolutions.RES_2560x800
+    cameraResolution = Resolutions.RES_640x480
     cameraFps = 8
 
     def __init__(self,_depthMapProcessor):
@@ -60,6 +60,12 @@ class UIManager(QMainWindow):
         self.zFilterHeight = 0
         self.zFilterThickness = 0.5
         self.depthFilter = 2.5
+
+        self.forwardPose = 0.0
+
+        if not hasattr(self, 'nube_puntos'):
+            self.output2D = []
+        # self.output2D = []
 
         # --------------------------------
         self.setWindowTitle("Ps5 Camera GUI")
@@ -114,6 +120,9 @@ class UIManager(QMainWindow):
         # Combo box para seleccionar la resolución de la cámara
         self.comboResolution = QComboBox()
         resolutions = [
+            "640x480 8fps",
+            "640x480 30fps",
+            "640x480 60fps",
             "2560x800 8fps",
             "2560x800 30fps",
             "2560x800 60fps",
@@ -142,6 +151,11 @@ class UIManager(QMainWindow):
         self.labelStatusSerial.setText("Desconectado")
         self.labelStatusSerial.setAlignment(Qt.AlignCenter)
         videoControlLayout.addWidget(self.labelStatusSerial)
+
+        self.labelXYZSerial = QLabel(parent=self.gb_videoControl)
+        self.labelXYZSerial.setText("X: -   Y: -    Z: -")
+        self.labelXYZSerial.setAlignment(Qt.AlignCenter)
+        videoControlLayout.addWidget(self.labelXYZSerial)
 
         # Cuadro de control de pointcloud
         pointCloudControlLayout = QVBoxLayout()
@@ -187,9 +201,20 @@ class UIManager(QMainWindow):
         self.sliderDepthFilter.setTickPosition(QSlider.TicksBelow)
         self.sliderDepthFilter.setTickInterval(10)
         self.sliderDepthFilter.valueChanged.connect(self.depthFilterChange)
+
+
+        # Boton para simular avance del robot
+        self.btnForwardPose = QPushButton(text="avanzar 1mt")
+        self.btnForwardPose.clicked.connect(self.testForwardPose)
+
+        # Boton limpiar nube de puntos
+        self.btnClearPointCloud = QPushButton(text="limpiar pointcloud")
+        self.btnClearPointCloud.clicked.connect(self.testClearPointcloud)
         
         pointCloudControlLayout.addWidget(self.labelDepthFilter)
         pointCloudControlLayout.addWidget(self.sliderDepthFilter)
+        pointCloudControlLayout.addWidget(self.btnForwardPose) 
+        pointCloudControlLayout.addWidget(self.btnClearPointCloud)       
 
         # Cuadro de control de DepthMap abajo
         depthControlLayout = QVBoxLayout()
@@ -394,7 +419,7 @@ class UIManager(QMainWindow):
         # Rotación de la nube de puntos
         yaw = np.radians(self.cameraPose[2])
         Qyaw = np.float32([[np.cos(yaw)     , 0 , np.sin(yaw)   , 0],
-                            [0              , 1 , 0             , 0],
+                            [0              , 1 , 0             , self.forwardPose],
                             [-np.sin(yaw)   , 0 , np.cos(yaw)   , 0],
                             [0              , 0 , 0             , 1]])
         
@@ -406,6 +431,8 @@ class UIManager(QMainWindow):
 
         roll = np.radians(self.cameraPose[1])
 
+        print('Pitch: '+ str(round(pitch,2)) + '   Roll: '+ str(round(roll,2)) + '    Yaw: ' + str(round(yaw,2)) + '    Forward: ' + str(self.forwardPose))
+        self.labelXYZSerial.setText('Pitch: '+ str(round(pitch,2)) + '   Roll: '+ str(round(roll,2)) + '    Yaw: ' + str(round(yaw,2)))
         # Multiplico por la matriz de rotación
         rotated_points = np.dot(points_homogeneous, Qyaw.T)
         rotated_points = np.dot(rotated_points, Qpitch.T)
@@ -421,6 +448,14 @@ class UIManager(QMainWindow):
 
         rotated_points = rotated_points.reshape(-1, 3)         # Aplano a (800*1264, 3)
 
+        # # Agrega los puntos rotados actuales a la lista acumulativa
+        # self.output2D.append(rotated_points)
+        # # Convierte la lista acumulada en un array de NumPy para su procesamiento
+        # nube_puntos_acumulada = np.vstack(self.output2D)
+        # self.drawer2DWidget.updatePlot(nube_puntos_acumulada,out_colors)
+
+        
+
         self.drawer2DWidget.updatePlot(rotated_points,out_colors)
 
         y_min = self.zFilterHeight - self.zFilterThickness
@@ -433,7 +468,7 @@ class UIManager(QMainWindow):
 
         self.communicator.update_cloud.emit(rotated_points, out_colors)  # Emitir la señal
 
-        self.write_ply('point_cloud.ply', rotated_points, out_colors)
+        # self.write_ply('point_cloud.ply', rotated_points, out_colors)
         # self.write_stl_with_delaunay('point_cloud.stl',rotated_points)
 
     def write_stl_with_delaunay(self,filename, points):
@@ -522,21 +557,30 @@ class UIManager(QMainWindow):
 
     def changeResolution(self,index):                   # optimizar
         if (index == 0):
-            self.cameraResolution = Resolutions.RES_2560x800
+            self.cameraResolution = Resolutions.RES_640x480
             self.cameraFps = 8
         elif (index == 1):
-            self.cameraResolution = Resolutions.RES_2560x800
+            self.cameraResolution = Resolutions.RES_640x480
             self.cameraFps = 30
         elif (index == 2):
-            self.cameraResolution = Resolutions.RES_2560x800
+            self.cameraResolution = Resolutions.RES_640x480
             self.cameraFps = 60
-        elif (index == 3):
-            self.cameraResolution = Resolutions.RES_3448x808
+        if (index == 3):
+            self.cameraResolution = Resolutions.RES_2560x800
             self.cameraFps = 8
         elif (index == 4):
-            self.cameraResolution = Resolutions.RES_3448x808
+            self.cameraResolution = Resolutions.RES_2560x800
             self.cameraFps = 30
         elif (index == 5):
+            self.cameraResolution = Resolutions.RES_2560x800
+            self.cameraFps = 60
+        elif (index == 6):
+            self.cameraResolution = Resolutions.RES_3448x808
+            self.cameraFps = 8
+        elif (index == 7):
+            self.cameraResolution = Resolutions.RES_3448x808
+            self.cameraFps = 30
+        elif (index == 8):
             self.cameraResolution = Resolutions.RES_3448x808
             self.cameraFps = 60
 
@@ -633,6 +677,12 @@ class UIManager(QMainWindow):
             self.labelStatusSerial.setText("Desconectado")
             self.comboCommSerial.clear()
 
+    def testForwardPose(self):
+        self.forwardPose -= 10.0
+
+    def testClearPointcloud(self): 
+        self.output2D = []
+
 if __name__ == "__main__":
     App = QApplication(sys.argv)
     App.setStyle("Fusion")
@@ -642,7 +692,7 @@ if __name__ == "__main__":
     npDist = np.load('DepthParams/param_dist.npy')
     depthMapProcessor = DepthMapProcessor(npRet,npK,npDist)
 
-    # logging.basicConfig(level=logging.DEBUG)
+    # logging.basicConfig(level=logging.NOTSET)
 
     w = UIManager(depthMapProcessor)
 

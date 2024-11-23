@@ -47,7 +47,6 @@ class UIManager(QMainWindow):
 
         self.controlCamera = ControlCamera()
         self.getFrame =  GetFrame()
-        self.controlCamera = ControlCamera()
         self.drawer2DWidget = DrawOutput2D()
 
         self.communicator = Communicator()  # Crear la instancia de Communicator

@@ -1,8 +1,9 @@
 import cv2
 from enum import Enum
 from cv2_enumerate_cameras import enumerate_cameras
-from reactivex import Subject
 import threading
+
+import queue
 
 class GetFrame:
 
@@ -11,13 +12,13 @@ class GetFrame:
     # out_right = cv2.VideoWriter('right.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 40,(1264,800))
 
     def __init__(self):
-        self.subject = Subject()
         self.flagRunning = threading.Event()
         self.flagRunning.clear()
         self.hilo_emision = None
+        self.queueFrames = queue.Queue(maxsize=1)
         
-    def getSubjectGetFrame(self):
-        return self.subject
+    def getQueueGetFrame(self):
+        return self.queueFrames
 
     def decode(self,frame):
 
@@ -43,7 +44,7 @@ class GetFrame:
             # self.out_left.write(left)
             # self.out_right.write(right)
 
-            self.subject.on_next((left, right))
+            self.queueFrames.put((left,right))
 
     def startStream(self,vid_camera, resolution, fps):
         cameraIndex = -1

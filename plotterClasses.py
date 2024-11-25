@@ -13,37 +13,6 @@ from PyQt5.QtCore import pyqtSignal, QObject
 class Communicator(QObject):
     update_cloud = pyqtSignal(np.ndarray, np.ndarray)  # Señal para actualizar la nube de puntos
 
-# class DrawOutput3D(QWidget):
-#     def __init__(self):
-#         super().__init__()
-
-#         self.figure = plt.figure()
-#         self.canvas = FigureCanvas(self.figure)
-#         self.layout = QVBoxLayout()
-#         self.layout.addWidget(self.canvas)
-#         self.setLayout(self.layout)
-
-#     def updatePointCloud(self, points, colors):
-
-#         self.figure.clear()
-#         ax = self.figure.add_subplot(111, projection='3d')
-
-#         # ax.view_init(elev=45, azim=-45)
-        
-#         # Actualiza la nube de puntos
-#         ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=1, c=colors / 255.0 )#, c ='g')
-#         ax.set_title("Nube de puntos 3D")
-#         ax.set_xlabel("X")
-#         ax.set_ylabel("Y")
-#         ax.set_zlabel("Z")
-        
-#         lim_min, lim_max = -3,3
-#         ax.set_xlim([lim_min,lim_max])
-#         ax.set_ylim([lim_min,lim_max])
-#         ax.set_zlim([lim_min,lim_max])
-
-#         self.canvas.draw()
-
 class DrawOutput3D(QWidget):
     def __init__(self, communicator):
         super().__init__()
